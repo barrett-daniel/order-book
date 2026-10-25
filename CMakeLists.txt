@@ -18,6 +18,13 @@ file(GLOB_RECURSE ${PROJECT_NAME}_SOURCES CONFIGURE_DEPENDS
 add_executable(${PROJECT_NAME} ${${PROJECT_NAME}_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+find_package(boost_asio CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::asio)
+
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32 mswsock)
+endif()
+
 # TESTS -----
 
 file(GLOB_RECURSE ${PROJECT_NAME}_TEST_SOURCES CONFIGURE_DEPENDS
