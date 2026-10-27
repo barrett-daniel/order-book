@@ -53,4 +53,11 @@ struct Order {
     }
 };
 
+struct OrderModify {
+    OrderId id;
+    Price price;
+    Quantity quantity;
+};
+
+using OrderCancel = OrderId;
 using OrderPointer = std::shared_ptr<Order>;

@@ -96,10 +96,10 @@ public:
         return false;
     }
 
-    void cancel_order(OrderId order_id) {
-        if (!m_orders.contains(order_id)) return;
+    void cancel_order(OrderCancel order_cancel) {
+        if (!m_orders.contains(order_cancel)) return;
 
-        auto& [order, it] = m_orders.at(order_id);
+        auto& [order, it] = m_orders.at(order_cancel);
 
         if (order->side == Side::Buy) {
             auto& price_level = m_bids.at(order->price);
@@ -111,41 +111,12 @@ public:
             price_level.erase(it);
             if (price_level.empty()) m_asks.erase(order->price);
         }
-        m_orders.erase(order_id);
+        m_orders.erase(order_cancel);
     }
 
-    std::vector<Trade> modify_order_price(OrderId order_id, Price new_price) {
-        if (!m_orders.contains(order_id)) return {};
-
-        auto [order, _] = m_orders.at(order_id);
-        if (new_price == order->price) return {};
-
-        // modifying an orders price is just cancelling the order and re-adding
-        // it with the new price
-
-        cancel_order(order_id);
-        order->price = new_price;
-        return add_order(order);
-    }
-
-    void modify_order_quantity(OrderId order_id, Quantity new_quantity) {
-        if (!m_orders.contains(order_id)) return;
-        if (new_quantity == 0) cancel_order(order_id);
-
-        auto& [order, it] = m_orders.at(order_id);
-        if (new_quantity == order->quantity) return;
-
-        // if the order modification is a reduction in quantity, it should
-        // maintain its position in the list, otherwise it should be put to back
-
-        if (new_quantity > order->quantity) {
-            // move to back of price level
-            auto& price_level = order->side == Side::Buy
-                ? m_bids[order->price]
-                : m_asks[order->price];
-           price_level.splice(price_level.end(), price_level, it);
-        }
-        order->quantity = new_quantity;
+    std::vector<Trade> modify_order(OrderModify order_modify) {
+        modify_order_quantity(order_modify.id, order_modify.quantity);
+        return modify_order_price(order_modify.id, order_modify.price);
     }
 
     std::string to_string() const {
@@ -231,5 +202,39 @@ private:
         }
 
         return trades;
+    }
+
+    std::vector<Trade> modify_order_price(OrderId order_id, Price new_price) {
+        if (!m_orders.contains(order_id)) return {};
+
+        auto [order, _] = m_orders.at(order_id);
+        if (new_price == order->price) return {};
+
+        // modifying an orders price is just cancelling the order and re-adding
+        // it with the new price
+
+        cancel_order(order_id);
+        order->price = new_price;
+        return add_order(order);
+    }
+
+    void modify_order_quantity(OrderId order_id, Quantity new_quantity) {
+        if (!m_orders.contains(order_id)) return;
+        if (new_quantity == 0) cancel_order(order_id);
+
+        auto& [order, it] = m_orders.at(order_id);
+        if (new_quantity == order->quantity) return;
+
+        // if the order modification is a reduction in quantity, it should
+        // maintain its position in the list, otherwise it should be put to back
+
+        if (new_quantity > order->quantity) {
+            // move to back of price level
+            auto& price_level = order->side == Side::Buy
+                ? m_bids[order->price]
+                : m_asks[order->price];
+            price_level.splice(price_level.end(), price_level, it);
+        }
+        order->quantity = new_quantity;
     }
 };
