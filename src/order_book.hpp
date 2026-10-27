@@ -22,16 +22,22 @@ public:
         // worst price on the other side.
         if (order->type == OrderType::Market) {
             if (order->side == Side::Buy && !m_asks.empty()) {
-                const auto [worst_ask, _] = *m_asks.rbegin();
+                const auto& [worst_ask, _] = *m_asks.rbegin();
                 order->price = worst_ask;
                 order->type = OrderType::Limit;
+                if (order->tif != TimeInForce::FillOrKill) order->tif = TimeInForce::ImmediateOrCancel;
             }
             else if (order->side == Side::Sell && !m_bids.empty()) {
-                const auto [worst_bid, _] = *m_bids.rbegin();
+                const auto& [worst_bid, _] = *m_bids.rbegin();
                 order->price = worst_bid;
                 order->type = OrderType::Limit;
+                if (order->tif != TimeInForce::FillOrKill) order->tif = TimeInForce::ImmediateOrCancel;
             }
             else return {};
+        }
+
+        if (order->tif == TimeInForce::FillOrKill && !can_fill_order(order)) {
+            return {};
         }
 
         auto& price_level = order->side == Side::Buy
@@ -42,7 +48,52 @@ public:
         auto it = std::prev(price_level.end());
         m_orders.emplace(order->id, OrderEntry{order, it});
 
-        return match_orders();
+        auto trades = match_orders();
+        if (order->tif == TimeInForce::ImmediateOrCancel && m_orders.contains(order->id)) {
+            cancel_order(order->id);
+        }
+        return trades;
+    }
+
+    bool can_fill_order(OrderPointer order) {
+
+        // could exit early if theres no spread?
+
+        if (order->side == Side::Buy) {
+            Quantity fillable_quantity = 0;
+
+            // can probably abstract this logic to maintain another map of:
+            // price -> quantity for each level
+            for (auto& [price, bids] : m_asks) {
+                if (price > order->price) break;
+
+                for (OrderPointer bid : bids ) {
+                    fillable_quantity += bid->quantity;
+                }
+
+                if (fillable_quantity >= order->quantity) return true;
+            }
+
+            return false;
+        }
+
+        // same pattern as above but inverted
+        if (order->side == Side::Sell) {
+            Quantity fillable_quantity = 0;
+            for (auto& [price, bids] : m_bids) {
+                if (price < order->price) break;
+
+                for (OrderPointer bid : bids ) {
+                    fillable_quantity += bid->quantity;
+                }
+
+                if (fillable_quantity >= order->quantity) return true;
+            }
+
+            return false;
+        }
+
+        return false;
     }
 
     void cancel_order(OrderId order_id) {
@@ -74,12 +125,12 @@ public:
 
         cancel_order(order_id);
         order->price = new_price;
-        add_order(order);
-        return match_orders();
+        return add_order(order);
     }
 
     void modify_order_quantity(OrderId order_id, Quantity new_quantity) {
         if (!m_orders.contains(order_id)) return;
+        if (new_quantity == 0) cancel_order(order_id);
 
         auto& [order, it] = m_orders.at(order_id);
         if (new_quantity == order->quantity) return;
@@ -168,7 +219,7 @@ private:
                 }
                 if (ask->quantity == 0) {
                     asks.pop_front();
-                    m_orders.erase(bid->id);
+                    m_orders.erase(ask->id);
                 }
 
                 trades.emplace_back(bid->id, ask->id, quantity, ask->price);

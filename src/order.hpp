@@ -10,13 +10,15 @@ struct Order {
     Quantity quantity;
     Price price;
     OrderId id;
+    TimeInForce tif;
 
-    Order(OrderType type_, Side side_, Quantity quantity_, Price price_, OrderId id_)
+    Order(OrderType type_, Side side_, Quantity quantity_, Price price_, OrderId id_, TimeInForce tif_)
         : type{type_}
-    , side{side_}
-    , quantity{quantity_}
-    , price{price_}
-    , id{id_}
+        , side{side_}
+        , quantity{quantity_}
+        , price{price_}
+        , id{id_}
+        , tif(tif_)
     {}
 
     void fill(Quantity quantity_to_fill) {

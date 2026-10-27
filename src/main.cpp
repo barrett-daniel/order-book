@@ -35,10 +35,10 @@ void run_cli() {
         "========== ORDER BOOK SIMULATOR ==========\n"
         "A CLI interface is provided to simulate a basic order support LIMIT and MARKET orders.\n"
         "You can: ADD, CANCEL, or MODIFY buy or sell orders. Accepts user input of the following forms\n"
-        "\t - \"ADD [BUY or SELL] [quantity]\"                          :  adds a MARKET order to the order book (and executes it)\n"
-        "\t - \"ADD [BUY or SELL] [quantity] @ [price] \"               : adds a LIMIT order to the order book\n"
-        "\t - \"CANCEL [order id]\"                                     : cancel an order\n"
-        "\t - \"MODIFY [order id] [PRICE or QUANTITY] [changed value]\" : modifies the given order_id price or quantity to the changed value in the order book\n";
+        "\t - \"ADD [BUY or SELL] [quantity] [IOC or FOK or GTC]\"                          : adds a MARKET order to the order book (and executes it)\n"
+        "\t - \"ADD [BUY or SELL] [quantity] [IOC or FOK or GTC] @ [price] \"               : adds a LIMIT order to the order book\n"
+        "\t - \"CANCEL [order id]\"                                                         : cancel an order\n"
+        "\t - \"MODIFY [order id] [PRICE or QUANTITY] [changed value]\"                     : modifies the given order_id price or quantity to the changed value in the order book\n";
 
     std::cout << help_msg << std::endl;
 
@@ -58,7 +58,7 @@ void run_cli() {
         if (words.empty()) continue;
 
         if (words[0] == "ADD") {
-            if (words.size() < 3) {
+            if (words.size() < 4) {
                 std::cerr << "invalid input: ADD operation with too few arguments" << std::endl;
                 continue;
             }
@@ -81,9 +81,19 @@ void run_cli() {
             }
             Quantity quantity = std::stol(quantity_str);
 
+            const std::string& tif_str= words[3];
+            TimeInForce tif;
+            if (tif_str == "IOC") tif = TimeInForce::ImmediateOrCancel;
+            else if (tif_str == "FOK") tif = TimeInForce::FillOrKill;
+            else if (tif_str == "GTC") tif = TimeInForce::GoodTillCancel;
+            else {
+                std::cerr << "invalid input: ADD operation with unknown time-in-force" << std::endl;
+                continue;
+            }
+
             // if market order (inferred based on user input)
-            if (words.size() == 3) {
-                Order order = order_factory.get_market_order(side, quantity);
+            if (words.size() == 4) {
+                Order order = order_factory.get_market_order(side, quantity, tif);
                 std::vector<Trade> trades = order_book.add_order(std::make_shared<Order>(order));
                 std::cout << "Added " << order.to_string() << "\n\n";
                 std::cout << "Trades executed:\n";
@@ -98,14 +108,14 @@ void run_cli() {
             // otherwise must be limit order
 
             // @
-            const std::string& at_str = words[3];
+            const std::string& at_str = words[4];
             if (at_str != "@") {
                 std::cerr << "invalid input: ADD operation of LIMIT order with missing @ symbol" << std::endl;
                 continue;
             }
 
             // price
-            const std::string& bid_str = words[4];
+            const std::string& bid_str = words[5];
             if (!std::all_of(bid_str.begin(), bid_str.end(), ::isdigit)) {
                 std::cerr << "invalid input: ADD operation of LIMIT order with non-numeric bid" << std::endl;
                 continue;
@@ -113,7 +123,7 @@ void run_cli() {
             Price bid = std::stol(bid_str);
 
             // add limit order
-            Order order = order_factory.get_limit_order(side, quantity, bid);
+            Order order = order_factory.get_limit_order(side, quantity, bid, tif);
 
             std::vector<Trade> trades = order_book.add_order(std::make_shared<Order>(order));
             std::cout << "Added " << order.to_string() << "\n\n";

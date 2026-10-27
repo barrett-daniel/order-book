@@ -15,3 +15,9 @@ enum class Side {
     Sell
 };
 
+enum class TimeInForce {
+    ImmediateOrCancel,
+    FillOrKill,
+    GoodTillCancel,
+};
+
