@@ -1,8 +1,15 @@
 #pragma once
-#include <algorithm>
+
+#include <charconv>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include <magic_enum/magic_enum.hpp>
 
 #include "order_book.hpp"
 #include "order_factory.hpp"
@@ -10,188 +17,213 @@
 class CLI {
 public:
     void run() {
-        std::string help_msg =
-            "========== ORDER BOOK SIMULATOR ==========\n"
-            "A CLI interface is provided to simulate a basic order support LIMIT and MARKET orders.\n"
-            "You can: ADD, CANCEL, or MODIFY buy or sell orders. Accepts user input of the following forms\n"
-            "\t - \"ADD [BUY or SELL] [quantity] [IOC or FOK or GTC]\"                          : adds a MARKET order to the order book (and executes it)\n"
-            "\t - \"ADD [BUY or SELL] [quantity] [IOC or FOK or GTC] @ [price] \"               : adds a LIMIT order to the order book\n"
-            "\t - \"CANCEL [order id]\"                                                         : cancel an order\n"
-            "\t - \"MODIFY [order id] [PRICE or QUANTITY] [changed value]\"                     : modifies the given order_id price or quantity to the changed value in the order book\n";
+        std::cout << kHelpMessage << std::endl;
 
-        std::cout << help_msg << std::endl;
-
+        std::string input;
         while (true) {
-            std::string input;
             std::cout << "> ";
-            std::getline(std::cin, input);
+            if (!std::getline(std::cin, input)) break;
             std::cout << "\n";
-            std::stringstream ss(input);
 
-            if (input == "quit" || input == "q" || input == "QUIT") break;
+            if (input == "quit" || input == "QUIT" || input == "q") break;
 
-            // encode input into space separated words
+            // tokenise the input
+            std::istringstream stream(input);
             std::vector<std::string> words;
-            std::string word;
-            while (ss >> word) words.push_back(std::move(word));
+            for (std::string word; stream >> word;) words.push_back(std::move(word));
             if (words.empty()) continue;
 
-            if (words[0] == "ADD") handle_add_operation(words);
-            else if (words[0] == "MODIFY") handle_modify_operation(words);
-            else if (words[0] == "CANCEL") handle_cancel_operation(words);
-            else std::cerr << "invalid input:\n" << help_msg;
-        }
-    }
-
-    void handle_add_operation(const std::vector<std::string>& words) {
-        if (words.size() < 4) {
-            std::cerr << "invalid input: ADD operation with too few arguments" << std::endl;
-            return;
-        }
-
-        // parse side
-        const std::string& side_str = words[1];
-        Side side;
-        if (side_str == "BUY") side = Side::Buy;
-        else if (side_str == "SELL") side = Side::Sell;
-        else {
-            std::cerr << "invalid input: ADD operation with unknown side" << std::endl;
-            return;
-        }
-
-        // quantity
-        const std::string& quantity_str = words[2];
-        if (!std::all_of(quantity_str.begin(), quantity_str.end(), ::isdigit)) {
-            std::cerr << "invalid input: ADD operation with non-numeric quantity" << std::endl;
-            return;
-        }
-        Quantity quantity = std::stol(quantity_str);
-
-        const std::string& tif_str= words[3];
-        TimeInForce tif;
-        if (tif_str == "IOC") tif = TimeInForce::ImmediateOrCancel;
-        else if (tif_str == "FOK") tif = TimeInForce::FillOrKill;
-        else if (tif_str == "GTC") tif = TimeInForce::GoodTillCancel;
-        else {
-            std::cerr << "invalid input: ADD operation with unknown time-in-force" << std::endl;
-            return;
-        }
-
-        // if market order (inferred based on user input)
-        if (words.size() == 4) {
-            Order order = order_factory.get_market_order(side, quantity, tif);
-            std::vector<Trade> trades = order_book.add_order(std::make_shared<Order>(order));
-            std::cout << "Added " << order.to_string() << "\n\n";
-            std::cout << "Trades executed:\n";
-            for (const auto& trade : trades) {
-                std::cout << "\t" << trade.to_string() << "\n";
+            // delegate requested operation to appropriate handler
+            const auto operation = parse_enum<OrderOperation>(words[0]);
+            if (!operation) {
+                print_error("unknown operation '" + words[0] + "'");
+                continue;
             }
-            std::cout << "\n";
-            std::cout << order_book.to_string() << std::endl;
-            return;
+
+            switch (*operation) {
+                case OrderOperation::Add:    handle_add(words);    break;
+                case OrderOperation::Modify: handle_modify(words); break;
+                case OrderOperation::Cancel: handle_cancel(words); break;
+            }
         }
-
-        // otherwise must be limit order
-
-        // @
-        const std::string& at_str = words[4];
-        if (at_str != "@") {
-            std::cerr << "invalid input: ADD operation of LIMIT order with missing @ symbol" << std::endl;
-            return;
-        }
-
-        // price
-        const std::string& bid_str = words[5];
-        if (!std::all_of(bid_str.begin(), bid_str.end(), ::isdigit)) {
-            std::cerr << "invalid input: ADD operation of LIMIT order with non-numeric bid" << std::endl;
-            return;
-        }
-        Price bid = std::stol(bid_str);
-
-        // add limit order
-        Order order = order_factory.get_limit_order(side, quantity, bid, tif);
-
-        std::vector<Trade> trades = order_book.add_order(std::make_shared<Order>(order));
-        std::cout << "Added " << order.to_string() << "\n\n";
-        std::cout << "Trades executed:\n";
-        for (const auto& trade : trades) {
-            std::cout << "\t" << trade.to_string() << "\n";
-        }
-        std::cout << "\n";
-        std::cout << order_book.to_string() << std::endl;
-    }
-
-    void handle_modify_operation(const std::vector<std::string>& words) {
-        if (words.size() !=  4) {
-            std::cerr << "invalid input: MODIFY operation requires 3 additional arguments" << std::endl;
-            return;
-        }
-
-        // parse id
-        const std::string& order_id_str = words[1];
-        if (!std::all_of(order_id_str.begin(), order_id_str.end(), ::isdigit)) {
-            std::cerr << "invalid input: MODIFY with non-numeric order id" << std::endl;
-            return;
-        }
-        OrderId order_id = std::stol(order_id_str);
-
-        const std::string& modification_type_string = words[2];
-        if (modification_type_string != "PRICE" && modification_type_string != "QUANTITY") {
-            std::cerr << "invalid input: MODIFY operation with undefined modification type, enter: PRICE or QUANTITY" << std::endl;
-            return;
-        }
-
-        const std::string& changed_value_str = words[3];
-        if (!std::all_of(changed_value_str.begin(), changed_value_str.end(), ::isdigit)) {
-            std::cerr << "invalid input: MODIFY operation with non-numeric changed parameter (either the price or quantity)" << std::endl;
-            return;
-        }
-
-        std::vector<Trade> trades = {};
-        OrderModify order_modify{};
-        order_modify.id = order_id;
-
-        if (modification_type_string == "PRICE") {
-            Price new_price = std::stol(changed_value_str);
-            order_modify.price = new_price;
-
-            trades = order_book.modify_order(order_modify);
-
-        } else if (modification_type_string == "QUANTITY") {
-            Quantity new_quantity = std::stol(changed_value_str);
-            order_modify.quantity = new_quantity;
-            trades = order_book.modify_order(order_modify);
-        }
-
-        std::cout << "Modified " << order_book.get_order(order_id)->to_string() << "\n\n";
-        std::cout << "Trades executed:\n";
-        for (const auto& trade : trades) {
-            std::cout << "\t" << trade.to_string() << "\n";
-        }
-        std::cout << "\n";
-        std::cout << order_book.to_string() << std::endl;
-    }
-
-    void handle_cancel_operation(const std::vector<std::string>& words) {
-        if (words.size() != 2) {
-            std::cerr << "invalid input: CANCEL operation with too many arguments" << std::endl;
-            return;
-        }
-
-        // parse id
-        const std::string& order_id_str = words[1];
-        if (!std::all_of(order_id_str.begin(), order_id_str.end(), ::isdigit)) {
-            std::cerr << "invalid input: CANCEL operation with non-numeric order id" << std::endl;
-            return;
-        }
-        OrderId order_id = std::stol(order_id_str);
-
-        order_book.cancel_order(order_id);
-        std::cout << "Order cancelled: " << order_id << "\n\n";
-        std::cout << order_book.to_string() << std::endl;
     }
 
 private:
+    enum class ModifyField { Price, Quantity };
+
+    static constexpr std::string_view kHelpMessage =
+        "========== ORDER BOOK SIMULATOR ==========\n"
+        "A CLI for simulating a basic order book supporting LIMIT and MARKET orders.\n"
+        "You can ADD, CANCEL, or MODIFY buy or sell orders:\n"
+        "\t - \"ADD [BUY|SELL] [quantity] [IOC|FOK|GTC]\"               : add (and execute) a MARKET order\n"
+        "\t - \"ADD [BUY|SELL] [quantity] @ [price] [IOC|FOK|GTC]\"     : add a LIMIT order\n"
+        "\t - \"CANCEL [order id]\"                                     : cancel an order\n"
+        "\t - \"MODIFY [order id] [PRICE|QUANTITY] [new value]\"        : change an order's price or quantity\n"
+        "\t - \"quit\"                                                  : exit\n";
+
+    // ==================================================
+    // operation handlers
+    // ==================================================
+
+    // MARKET: ADD <side> <qty> <tif>               (4 words)
+    // LIMIT:  ADD <side> <qty> @ <price> <tif>     (6 words)
+    void handle_add(const std::vector<std::string>& words) {
+        bool is_market = words.size() == 4;
+        bool is_limit  = words.size() == 6;
+        if (!is_market && !is_limit) {
+            print_error("ADD expects 3 arguments (MARKET) or 5 arguments (LIMIT)");
+            return;
+        }
+
+        auto add_order = [this](const Order& order) {
+            const std::vector<Trade> trades = order_book.add_order(std::make_shared<Order>(order));
+            std::cout << "Added Order: " << order.to_string() << "\n\n";
+            print_result(trades);
+        };
+
+        const auto side = parse_enum<Side>(words[1]);
+        if (!side) {
+            print_error("ADD with unknown side");
+            return;
+        }
+
+        const auto quantity = parse_number<Quantity>(words[2]);
+        if (!quantity) {
+            print_error("ADD with invalid quantity");
+            return;
+        }
+
+        if (is_market) {
+            const auto tif = parse_enum<TimeInForce>(words[3]);
+            if (!tif) {
+                print_error("ADD with unknown time-in-force");
+                return;
+            }
+
+            add_order(order_factory.get_market_order(*side, *quantity, *tif));
+            return;
+        }
+
+        // otherwise limit orders
+
+        if (words[3] != "@") {
+            print_error("LIMIT order is missing the '@' symbol");
+            return;
+        }
+
+        const auto price = parse_number<Price>(words[4]);
+        if (!price) {
+            print_error("ADD with invalid price");
+            return;
+        }
+
+        const auto tif = parse_enum<TimeInForce>(words[5]);
+        if (!tif) {
+            print_error("ADD with unknown time-in-force");
+            return;
+        }
+
+        add_order(order_factory.get_limit_order(*side, *quantity, *price, *tif));
+    }
+
+    // MODIFY <order id> <PRICE|QUANTITY> <new value>
+    void handle_modify(const std::vector<std::string>& words) {
+        if (words.size() != 4) {
+            print_error("MODIFY expects 3 arguments: [order id] [PRICE|QUANTITY] [new value]");
+            return;
+        }
+
+        const auto order_id = parse_number<OrderId>(words[1]);
+        if (!order_id) {
+            print_error("MODIFY with invalid order id");
+            return;
+        }
+
+        const auto field = parse_enum<ModifyField>(words[2]);
+        if (!field) {
+            print_error("MODIFY field must be PRICE or QUANTITY");
+            return;
+        }
+
+        OrderModify modification{};
+        modification.id = *order_id;
+
+        switch (*field) {
+            case ModifyField::Price: {
+                const auto price = parse_number<Price>(words[3]);
+                if (!price) {
+                    print_error("MODIFY with invalid price");
+                    return;
+                }
+                modification.price = *price;
+                break;
+            }
+            case ModifyField::Quantity: {
+                const auto quantity = parse_number<Quantity>(words[3]);
+                if (!quantity) {
+                    print_error("MODIFY with invalid quantity");
+                    return;
+                }
+                modification.quantity = *quantity;
+                break;
+            }
+        }
+
+        const std::vector<Trade> trades = order_book.modify_order(modification);
+        print_result(trades);
+    }
+
+    // CANCEL <order id>
+    void handle_cancel(const std::vector<std::string>& words) {
+        if (words.size() != 2) {
+            print_error("CANCEL expects exactly 1 argument: [order id]");
+            return;
+        }
+
+        const auto order_id = parse_number<OrderId>(words[1]);
+        if (!order_id) {
+            print_error("CANCEL with invalid order id");
+            return;
+        }
+
+        order_book.cancel_order(*order_id);
+        std::cout << "Order cancelled: " << *order_id << "\n\n";
+        std::cout << order_book.to_string() << std::endl;
+    }
+
+    // ==================================================
+    // util
+    // ==================================================
+
+    void print_result(const std::vector<Trade>& trades) const {
+        std::cout << "Trades executed:\n";
+        for (const auto& trade : trades) {
+            std::cout << "\t" << trade.to_string() << "\n";
+        }
+        std::cout << "\n" << order_book.to_string() << std::endl;
+    }
+
+    static void print_error(std::string_view message) {
+        std::cerr << "invalid input: " << message << std::endl;
+    }
+
+    template <typename E>
+    static std::optional<E> parse_enum(std::string_view text) {
+        return magic_enum::enum_cast<E>(text, magic_enum::case_insensitive);
+    }
+
+    template <typename T>
+    static std::optional<T> parse_number(std::string_view text) {
+        if (text.empty() || text.front() == '-') return std::nullopt;
+
+        T value{};
+        const char* start = text.data();
+        const char* end  = start + text.size();
+        const auto result = std::from_chars(start, end, value);
+        
+        return result.ec == std::errc() ? value : std::nullopt;
+    }
+
     OrderBook order_book;
     OrderFactory order_factory;
 };
