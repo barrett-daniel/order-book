@@ -25,18 +25,18 @@ public:
                 const auto& [worst_ask, _] = *m_asks.rbegin();
                 order->price = worst_ask;
                 order->type = OrderType::Limit;
-                if (order->tif != TimeInForce::FillOrKill) order->tif = TimeInForce::ImmediateOrCancel;
+                if (order->tif != TimeInForce::FOK) order->tif = TimeInForce::IOC;
             }
             else if (order->side == Side::Sell && !m_bids.empty()) {
                 const auto& [worst_bid, _] = *m_bids.rbegin();
                 order->price = worst_bid;
                 order->type = OrderType::Limit;
-                if (order->tif != TimeInForce::FillOrKill) order->tif = TimeInForce::ImmediateOrCancel;
+                if (order->tif != TimeInForce::FOK) order->tif = TimeInForce::IOC;
             }
             else return {};
         }
 
-        if (order->tif == TimeInForce::FillOrKill && !can_fill_order(order)) {
+        if (order->tif == TimeInForce::FOK && !can_fill_order(order)) {
             return {};
         }
 
@@ -49,7 +49,7 @@ public:
         m_orders.emplace(order->id, OrderEntry{order, it});
 
         auto trades = match_orders();
-        if (order->tif == TimeInForce::ImmediateOrCancel && m_orders.contains(order->id)) {
+        if (order->tif == TimeInForce::IOC && m_orders.contains(order->id)) {
             cancel_order(order->id);
         }
         return trades;

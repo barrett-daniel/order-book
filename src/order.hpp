@@ -1,6 +1,7 @@
 #pragma once
 #include <format>
 #include <stdexcept>
+#include <magic_enum/magic_enum.hpp>
 
 #include "types.hpp"
 
@@ -36,19 +37,21 @@ struct Order {
 
     std::string to_string() const {
         if (type == OrderType::Market) {
-            return std::format("[Order {}: {} {}]",
+            return std::format("[Order {}: {} {} {}]",
                 id,
-                side == Side::Buy ? "BUY" : "SELL",
-                quantity
+                magic_enum::enum_name(side),
+                quantity,
+                magic_enum::enum_name(tif)
             );
         }
 
         // limit
-        return std::format("[Order {} : {} {} @ {}]",
+        return std::format("[Order {} : {} {} @ {} {}]",
             id,
-            side == Side::Buy ? "BUY" : "SELL",
+            magic_enum::enum_name(side),
             quantity,
-            price
+            price,
+            magic_enum::enum_name(tif)
         );
     }
 };

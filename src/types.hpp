@@ -16,12 +16,12 @@ enum class Side : uint8_t {
 };
 
 enum class TimeInForce : uint8_t {
-    ImmediateOrCancel = 0,
-    FillOrKill = 1,
-    GoodTillCancel = 2,
+    IOC = 0,
+    FOK = 1,
+    GTC = 2,
 };
 
-enum class OrderOperation : uint8_t{
+enum class OrderOperation : int {
     Add = 0,
     Modify = 1,
     Cancel = 2
