@@ -21,6 +21,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/s
 find_package(boost_asio CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Boost::asio)
 
+find_package(boost_endian CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::endian)
+
 find_package(magic_enum CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE magic_enum::magic_enum)
 

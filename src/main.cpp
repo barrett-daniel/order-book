@@ -1,19 +1,10 @@
-#include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <format>
 #include <iostream>
-#include <list>
-#include <memory>
 #include <sstream>
-#include <vector>
 
 #include "cli.hpp"
-#include "order_book.hpp"
-#include "order_factory.hpp"
-
-void run_cli();
-void run_server();
+#include "server.hpp"
 
 int main(int argc, char** argv) {
 
@@ -26,11 +17,9 @@ int main(int argc, char** argv) {
         cli.run();
     }
 
-    if (strcmp(argv[1], "-server") == 0) run_server();
+    if (strcmp(argv[1], "-server") == 0) {
+        Server server;
+    }
 
     return 0;
-}
-
-void run_server() {
-
 }

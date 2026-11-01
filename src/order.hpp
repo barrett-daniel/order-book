@@ -60,6 +60,10 @@ struct OrderModify {
     OrderId id;
     Price price;
     Quantity quantity;
+
+    std::string to_string() const {
+        return std::format("[OrderModify {}: {} {}]", id, price, quantity);
+    }
 };
 
 using OrderCancel = OrderId;

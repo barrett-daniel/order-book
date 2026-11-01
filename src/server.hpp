@@ -1,112 +1,91 @@
 #pragma once
 
+#include <iostream>
 #include <boost/asio.hpp>
+#include <boost/endian/conversion.hpp>
+#include <utility>
+
+#include "order.hpp"
+#include "order_book.hpp"
+#include "order_factory.hpp"
 
 using boost::asio::ip::tcp;
 
-// the below is from the boost asio tutorial: https://www.boost.org/doc/user-guide/task-networking.html#_sample_client_server_messaging
+constexpr size_t MAGIC_LEN = 4;
+constexpr char MAGIC[MAGIC_LEN] = {'%', 'M' , 'O', 'B'};
+constexpr int PORT = 8080;
+constexpr size_t PACKET_LEN = 30; // bytes
+
+using ParseError = std::string;
+using NetworkRequest = std::variant<Order, OrderModify, OrderCancel, ParseError>;
 
 class Server {
 public:
     Server() {
         try {
-            // io_context is the central object used by Boost.Asio.
-            //
-            // Many Asio programs use io_context to run asynchronous
-            // operations. This particular example uses synchronous
-            // operations, so io_context doesn't need to run an event loop.
             boost::asio::io_context io_context;
-
-            // Create a TCP acceptor.
-            //
-            // The acceptor listens for incoming TCP connections.
-            //
-            // tcp::v4() means IPv4.
-            //
-            // Port 12345 is the TCP port on which this server will listen.
-            tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), 12345));
-
-            // Tell the user that the server is ready for a connection.
+            tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), PORT));
             std::cout << "Server started. Waiting for client..." << std::endl;
 
-            // Create a socket that will eventually represent the connection to the client.
             tcp::socket socket(io_context);
-
-            // Wait for a client to connect.
-            //
-            // accept() is synchronous, so the program stops here until
-            // a client establishes a TCP connection.
-            //
-            // When a connection arrives, Asio places the connected socket into the 'socket' object.
             acceptor.accept(socket);
-
             std::cout << "Client connected!" << std::endl;
 
-            // Transfer ownership of the socket to handle_client().
-            //
-            // std::move() allows the socket to be moved rather than copied.
-            // This is necessary because a socket represents a network
-            // resource that should have one clear owner.
             handle_client(std::move(socket));
 
         } catch (std::exception& e) {
-            // Catch errors that occur while setting up the server or accepting the connection.
             std::cerr << "Exception: " << e.what() << std::endl;
         }
     }
 
     void handle_client(tcp::socket socket) {
         try {
+            uint8_t buff[512];
 
-            // A simple buffer for data received from the client.
-            // The server can receive up to 1023 characters at a time
-            // because one byte is reserved for the terminating '\0'.
-            char data[1024];
-
-            // Keep communicating with the client until the connection is closed or an error occurs.
             while (true) {
+                std::memset(buff, 0, sizeof(buff));
 
-                // Clear the buffer before receiving the next message.
-                // memset() fills the specified memory with zero bytes.
-                std::memset(data, 0, sizeof(data));
-
-                // Boost.Asio normally reports errors through an
-                // error_code object rather than throwing an exception.
                 boost::system::error_code error;
+                size_t length = socket.read_some(boost::asio::buffer(buff), error);
 
-                // Read some data from the TCP socket.
-                //
-                // boost::asio::buffer(data) tells Asio that 'data' is
-                // the memory into which the received bytes should be placed.
-                //
-                // read_some() is a synchronous operation: this thread
-                // waits here until some data arrives or an error occurs.
-                size_t length = socket.read_some(boost::asio::buffer(data), error);
-
-                // EOF means the other end has closed the connection.
                 if (error == boost::asio::error::eof) break; // Connection closed
+                if (error) throw boost::system::system_error(error);
+                if (length != PACKET_LEN) continue;
 
-                // Any other error is treated as an exception.
-                // system_error converts the error_code into a C++ exception
-                // containing useful diagnostic information.
-                else if (error) throw boost::system::system_error(error);
+                auto request = bytes_to_request(buff);
+                std::vector<Trade> trades = {};
+                if (std::holds_alternative<Order>(request)) {
+                    Order& order = std::get<Order>(request);
+                    std::cout << "Received ADD order request: " << order.to_string() << std::endl;
+                    trades = order_book.add_order(std::make_shared<Order>(order));
+                }
 
-                // Display the message received from the client.
-                std::cout << "Client: " << data << std::endl;
+                if (std::holds_alternative<OrderCancel>(request)) {
+                    OrderCancel& order_cancel = std::get<OrderCancel>(request);
+                    std::cout << "Received CANCEL order request: " << order_cancel<< std::endl;
+                    order_book.cancel_order(order_cancel);
+                }
 
-                // Prepare a response to send back to the client.
-                std::string response;
+                if (std::holds_alternative<OrderModify>(request)) {
+                    OrderModify& order_modify = std::get<OrderModify>(request);
+                    std::cout << "Received MODIFY order request: " << order_modify.to_string() << std::endl;
+                    trades = order_book.modify_order(order_modify);
+                }
 
-                // Ask the person running the server what they want to send.
-                std::cout << "You: ";
-                std::getline(std::cin, response);
+                if (std::holds_alternative<ParseError>(request)) {
+                    std::cerr << "Received error: " << std::get<ParseError>(request) << std::endl;
+                }
 
-                // Send the response to the client.
-                //
-                // boost::asio::buffer(response) creates a view of the string's memory for Asio to send.
-                //
-                // write() is synchronous, so this thread waits until the response has been written to the socket.
-                boost::asio::write(socket, boost::asio::buffer(response), error);
+                if (!trades.empty()) {
+                    std::cout << "Trades executed:\n";
+                    for (const auto& trade : trades) {
+                        std::cout << "\t" << trade.to_string() << "\n";
+                    }
+                }
+                std::cout << std::endl << order_book.to_string() << std::endl;
+
+                std::vector<uint8_t> trade_byte_data = trades_to_bytes(trades);
+                boost::asio::write(socket, boost::asio::buffer(trade_byte_data), error);
             }
 
         // Catch any exception thrown while communicating with the client.
@@ -114,4 +93,93 @@ public:
             std::cerr << "Exception: " << e.what() << std::endl;
         }
     }
+
+    NetworkRequest bytes_to_request(uint8_t* data) {
+        if (std::memcmp(data, MAGIC, MAGIC_LEN) != 0) return ParseError("Invalid packet MAGIC");
+
+        uint8_t operation_bits = 0;
+        uint8_t side_bits = 0;
+        uint8_t order_type_bits = 0;
+        uint8_t tif_bits = 0;
+
+        Price price = 0;
+        Quantity quantity = 0;
+        OrderId order_id = 0;
+
+        std::memcpy(&operation_bits, data + 4, sizeof(operation_bits));
+        operation_bits &= 0b00001111;
+        auto operation = parse_enum<OrderOperation>(operation_bits);
+        if (!operation) return ParseError("Invalid packet operation");
+
+        std::memcpy(&side_bits, data + 4, sizeof(side_bits));
+        side_bits >>= 4;
+        auto side = parse_enum<Side>(side_bits);
+        if (!side) return ParseError("Invalid packet side");
+
+        std::memcpy(&order_type_bits, data + 5, sizeof(order_type_bits));
+        order_type_bits &= 0b00001111;
+        auto order_type = parse_enum<OrderType>(order_type_bits);
+        if (!order_type) return ParseError("Invalid packet order type");
+
+        std::memcpy(&tif_bits, data + 5, sizeof(tif_bits));
+        tif_bits >>= 4;
+        auto tif = parse_enum<TimeInForce>(tif_bits);
+        if (!tif) return ParseError("Invalid packet time in force");
+
+        std::memcpy(&order_id, data + 22, sizeof(order_id));
+        std::memcpy(&price, data + 6, sizeof(price));
+        std::memcpy(&quantity, data + 14, sizeof(quantity));
+
+        price    = boost::endian::big_to_native(price);
+        quantity = boost::endian::big_to_native(quantity);
+        order_id = boost::endian::big_to_native(order_id);
+
+        switch (*operation) {
+            case OrderOperation::Add: {
+                switch (*order_type) {
+                    case OrderType::Market: return order_factory.get_market_order(*side, quantity, *tif);;
+                    case OrderType::Limit: return order_factory.get_limit_order(*side, quantity, price, *tif);
+                    default: return ParseError("Unsupported packet order type");
+                }
+            }
+            case OrderOperation::Modify: return OrderModify{order_id, price, quantity};
+            case OrderOperation::Cancel: return static_cast<OrderCancel>(order_id);
+            default: ParseError("Unsupported packet operation");
+        }
+
+        // unreachable
+        return ParseError("Malformed Packet");
+    }
+
+    std::vector<uint8_t> trades_to_bytes(const std::vector<Trade>& trades) {
+        constexpr int RESPONSE_HEADER_SIZE = 6;
+        constexpr int TRADE_PACKET_LEN = 32;
+        std::vector<uint8_t> bytes(RESPONSE_HEADER_SIZE + trades.size() * TRADE_PACKET_LEN);
+
+        uint16_t num_trades = static_cast<uint16_t>(trades.size());
+        num_trades = boost::endian::native_to_big(num_trades);
+
+        std::memcpy(bytes.data(), MAGIC, MAGIC_LEN);
+        std::memcpy(bytes.data() + 4, &num_trades, sizeof(num_trades));
+
+        uint8_t* pos = bytes.data() + RESPONSE_HEADER_SIZE;
+        for (const Trade& trade : trades) {
+            OrderId buy_id = boost::endian::native_to_big(trade.buy_id);
+            OrderId sell_id = boost::endian::native_to_big(trade.sell_id);
+            Quantity quantity = boost::endian::native_to_big(trade.quantity);
+            Price price = boost::endian::native_to_big(trade.price);
+
+            std::memcpy(pos, &buy_id, sizeof(OrderId));
+            std::memcpy(pos + 8, &sell_id, sizeof(OrderId));
+            std::memcpy(pos + 16, &quantity, sizeof(OrderId));
+            std::memcpy(pos + 24, &price, sizeof(OrderId));
+
+            pos += TRADE_PACKET_LEN;
+        }
+        return bytes;
+    }
+
+private:
+    OrderFactory order_factory;
+    OrderBook order_book;
 };

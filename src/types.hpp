@@ -27,3 +27,11 @@ enum class OrderOperation : int {
     Cancel = 2
 };
 
+template <typename E, typename T>
+inline std::optional<E> parse_enum(T value) {
+    if constexpr (std::is_integral_v<T>) {
+        return magic_enum::enum_cast<E>(value);
+    } else {
+        return magic_enum::enum_cast<E>(value, magic_enum::case_insensitive);
+    }
+}

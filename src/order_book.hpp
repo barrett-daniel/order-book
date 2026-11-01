@@ -114,7 +114,7 @@ public:
         m_orders.erase(order_cancel);
     }
 
-    std::vector<Trade> modify_order(OrderModify order_modify) {
+    std::vector<Trade> modify_order(const OrderModify& order_modify) {
         modify_order_quantity(order_modify.id, order_modify.quantity);
         return modify_order_price(order_modify.id, order_modify.price);
     }

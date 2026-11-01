@@ -207,11 +207,6 @@ private:
         std::cerr << "invalid input: " << message << std::endl;
     }
 
-    template <typename E>
-    static std::optional<E> parse_enum(std::string_view text) {
-        return magic_enum::enum_cast<E>(text, magic_enum::case_insensitive);
-    }
-
     template <typename T>
     static std::optional<T> parse_number(std::string_view text) {
         if (text.empty() || text.front() == '-') return std::nullopt;
@@ -220,8 +215,8 @@ private:
         const char* start = text.data();
         const char* end  = start + text.size();
         const auto result = std::from_chars(start, end, value);
-        
-        return result.ec == std::errc() ? value : std::nullopt;
+
+        return result.ec == std::errc() ? std::optional<T>(value) : std::nullopt;
     }
 
     OrderBook order_book;
