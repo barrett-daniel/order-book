@@ -4,6 +4,7 @@ import random
 import struct
 from enum import IntEnum
 from dataclasses import dataclass
+from typing import ClassVar
 
 # network constants
 # =====================================
@@ -57,6 +58,7 @@ class OrderOperation(IntEnum):
 
 @dataclass
 class OrderRequest:
+    curr_max_order_id: ClassVar[int] = 0
     operation: OrderOperation = OrderOperation.Add
     order_id: int = 0
     price: int = 0
@@ -80,6 +82,7 @@ class Trade:
 
     def __str__(self) -> str:
         return f"Trade : buy#{self.buy_id:<8} sell#{self.sell_id:<8} {self.quantity:<8} @ {self.price:<8}"
+
 
 # Network Packing
 # =====================================
@@ -111,21 +114,27 @@ class RandomOrderGenerator:
         self.order_ids = []
 
     def get_order(self) -> OrderRequest:
-        operation = OrderOperation.Add if len(self.order_ids) == 0 else self.rng.choice(list(OrderOperation))
+        operation = OrderOperation.Add if len(self.order_ids) == 0 else self.rng.choices(list(OrderOperation), weights=[5,1,1])[0]
 
         side = self.rng.choice(list(Side))
         type = self.rng.choice(list(OrderType))
-        tif = self.rng.choices(list(TimeInForce), weights=[1, 1, 3])[0]
+        tif = self.rng.choices(list(TimeInForce), weights=[1, 1, 5])[0]
 
         price = 0 if type == OrderType.Market else self.rng.randint(MIN_INT_RNG_RANGE, MAX_INT_RNG_RANGE)
         quantity = self.rng.randint(MIN_INT_RNG_RANGE, MAX_INT_RNG_RANGE)
 
-        order_id = 0 if operation == OrderOperation.Add else self.rng.choice(self.order_ids)
+        order_id = 0
+        if operation == OrderOperation.Add:
+            order_id = OrderRequest.curr_max_order_id
+            OrderRequest.curr_max_order_id += 1
+            self.order_ids.append(order_id)
+        else:
+            order_id = self.rng.choice(self.order_ids)
 
         match operation:
             case OrderOperation.Cancel: return OrderRequest(operation=OrderOperation.Cancel, order_id=order_id)
             case OrderOperation.Modify: return OrderRequest(operation=OrderOperation.Modify, order_id=order_id, price=price, quantity=quantity)
-            case OrderOperation.Add:    return OrderRequest(operation=OrderOperation.Add, order_id=0, price=price, quantity=quantity, side=side, type=type, tif=tif)
+            case OrderOperation.Add:    return OrderRequest(operation=OrderOperation.Add,    order_id=order_id, price=price, quantity=quantity, side=side, type=type, tif=tif)
 
     def add_order_id(self, order_id: int):
         self.order_ids.append(order_id)

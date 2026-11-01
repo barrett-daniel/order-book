@@ -13,6 +13,8 @@ struct Order {
     OrderId id;
     TimeInForce tif;
 
+    Order() = default;
+
     Order(OrderType type_, Side side_, Quantity quantity_, Price price_, OrderId id_, TimeInForce tif_)
         : type{type_}
         , side{side_}

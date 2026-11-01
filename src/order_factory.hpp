@@ -12,5 +12,5 @@ public:
     }
 
 private:
-    OrderId m_next_id = 0;
+    OrderId m_next_id = 100;
 };

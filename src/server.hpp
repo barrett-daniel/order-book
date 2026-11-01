@@ -3,6 +3,7 @@
 #include <iostream>
 #include <boost/asio.hpp>
 #include <boost/endian/conversion.hpp>
+#include <boost/bimap.hpp>
 #include <utility>
 
 #include "order.hpp"
@@ -104,7 +105,7 @@ public:
 
         Price price = 0;
         Quantity quantity = 0;
-        OrderId order_id = 0;
+        OrderId client_order_id = 0;
 
         std::memcpy(&operation_bits, data + 4, sizeof(operation_bits));
         operation_bits &= 0b00001111;
@@ -126,24 +127,28 @@ public:
         auto tif = parse_enum<TimeInForce>(tif_bits);
         if (!tif) return ParseError("Invalid packet time in force");
 
-        std::memcpy(&order_id, data + 22, sizeof(order_id));
+        std::memcpy(&client_order_id, data + 22, sizeof(client_order_id));
         std::memcpy(&price, data + 6, sizeof(price));
         std::memcpy(&quantity, data + 14, sizeof(quantity));
 
-        price    = boost::endian::big_to_native(price);
+        price = boost::endian::big_to_native(price);
         quantity = boost::endian::big_to_native(quantity);
-        order_id = boost::endian::big_to_native(order_id);
+        client_order_id = boost::endian::big_to_native(client_order_id);
 
         switch (*operation) {
             case OrderOperation::Add: {
+                Order order{};
                 switch (*order_type) {
-                    case OrderType::Market: return order_factory.get_market_order(*side, quantity, *tif);;
-                    case OrderType::Limit: return order_factory.get_limit_order(*side, quantity, price, *tif);
+                    case OrderType::Market: order = order_factory.get_market_order(*side, quantity, *tif); break;
+                    case OrderType::Limit:  order = order_factory.get_limit_order(*side, quantity, price, *tif); break;
                     default: return ParseError("Unsupported packet order type");
                 }
+
+                client_server_id_map.insert({client_order_id, order.id});
+                return order;
             }
-            case OrderOperation::Modify: return OrderModify{order_id, price, quantity};
-            case OrderOperation::Cancel: return static_cast<OrderCancel>(order_id);
+            case OrderOperation::Modify: return OrderModify{client_server_id_map.left.at(client_order_id), price, quantity};
+            case OrderOperation::Cancel: return static_cast<OrderCancel>(client_server_id_map.left.at(client_order_id));
             default: ParseError("Unsupported packet operation");
         }
 
@@ -164,8 +169,8 @@ public:
 
         uint8_t* pos = bytes.data() + RESPONSE_HEADER_SIZE;
         for (const Trade& trade : trades) {
-            OrderId buy_id = boost::endian::native_to_big(trade.buy_id);
-            OrderId sell_id = boost::endian::native_to_big(trade.sell_id);
+            OrderId buy_id = boost::endian::native_to_big(client_server_id_map.right.at(trade.buy_id));
+            OrderId sell_id = boost::endian::native_to_big(client_server_id_map.right.at(trade.sell_id));
             Quantity quantity = boost::endian::native_to_big(trade.quantity);
             Price price = boost::endian::native_to_big(trade.price);
 
@@ -182,4 +187,5 @@ public:
 private:
     OrderFactory order_factory;
     OrderBook order_book;
+    boost::bimap<OrderId, OrderId> client_server_id_map; // client <-> server order ids
 };

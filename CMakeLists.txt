@@ -24,6 +24,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Boost::asio)
 find_package(boost_endian CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE Boost::endian)
 
+find_package(boost_bimap CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::bimap)
+
 find_package(magic_enum CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE magic_enum::magic_enum)
 

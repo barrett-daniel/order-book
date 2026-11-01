@@ -1,8 +1,9 @@
 {
   "dependencies": [
     "boost-asio",
+    "boost-endian",
     "doctest",
     "magic-enum",
-    "boost-endian"
+    "boost-bimap"
   ]
 }
