@@ -5,6 +5,7 @@ import struct
 from enum import IntEnum
 from dataclasses import dataclass
 from typing import ClassVar
+import threading
 
 # network constants
 # =====================================
@@ -22,12 +23,8 @@ MAX_INT_RNG_RANGE: int = 100
 MAGIC = b"%MOB"
 REQUEST_FMT = struct.Struct(">4sBBqQQ") # magic, operation/side, order_type/tif, price, quantity, order_id
 
-# the response is divided into a header, including the number of trades included in the payload.
-# the payload then has `n` trades, all of which follow the below format
-RESPONSE_HEADER_FMT = "!4sH"  # magic, num_trades
-RESPONSE_HEADER_SIZE = struct.calcsize(RESPONSE_HEADER_FMT)
-RESPONSE_PAYLOAD_FMT = "!QQQq"  # buy_id, sell_id, quantity, price
-RESPONSE_PAYLOAD_SIZE = struct.calcsize(RESPONSE_PAYLOAD_FMT)
+RESPONSE_FMT = "!4sQQQq"  # buy_id, sell_id, quantity, price
+RESPONSE_SIZE = struct.calcsize(RESPONSE_FMT)
 
 # enum types
 # =====================================
@@ -75,13 +72,13 @@ class OrderRequest:
 
 @dataclass
 class Trade:
-    buy_id: int = 0
-    sell_id: int = 0
+    order_id: int = 0
+    other_client_id: int = 0
     quantity: int = 0
     price: int = 0
 
     def __str__(self) -> str:
-        return f"Trade : buy#{self.buy_id:<8} sell#{self.sell_id:<8} {self.quantity:<8} @ {self.price:<8}"
+        return f"Trade : id#{self.order_id:<8} other_client_id#{self.other_client_id:<8} {self.quantity:<8} @ {self.price:<8}"
 
 
 # Network Packing
@@ -92,21 +89,20 @@ def pack_request(order: OrderRequest) -> bytes:
     byte_five = (order.type & 0xF) | ((order.tif & 0xF) << 4)
     return REQUEST_FMT.pack(MAGIC, byte_four, byte_five, order.price, order.quantity, order.order_id)
 
-def unpack_response(data: bytes) -> list[Trade]:
-    magic, num_trades = struct.unpack_from(RESPONSE_HEADER_FMT, data, 0)
+def unpack_response(data: bytes) -> Trade:
+    magic, buy_id, sell_id, quantity, price = struct.unpack_from(RESPONSE_FMT, data, 0)
     if magic != MAGIC: raise ValueError(f"Invalid Magic when unpacking response: {magic}")
 
-    expected_len = RESPONSE_HEADER_SIZE + num_trades * RESPONSE_PAYLOAD_SIZE
-    if len(data) != expected_len: raise ValueError(f"Malformed packet length when unpacking response: expected {expected_len}, actual {len(data)}")
-
-    trades: list[Trade] = []
-    for i in range(num_trades):
-        trade = Trade(*struct.unpack_from(RESPONSE_PAYLOAD_FMT, data, RESPONSE_HEADER_SIZE + i * RESPONSE_PAYLOAD_SIZE))
-        trades.append(trade)
-    return trades
+    return Trade(buy_id, sell_id, quantity, price)
 
 # logic handlers
 # =====================================
+
+print_lock = threading.Lock()
+
+def safe_print(msg: str) -> None:
+    with print_lock:
+        print(msg, flush=True)
 
 class RandomOrderGenerator:
     def __init__(self):
@@ -139,24 +135,45 @@ class RandomOrderGenerator:
     def add_order_id(self, order_id: int):
         self.order_ids.append(order_id)
 
+CLIENT_ACCEPT_FMT = "!4sQ"  # client_id
+
 class Client:
     def __init__(self):
         self.sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect((IP_ADDR, PORT))
         self.order_gen = RandomOrderGenerator()
 
-    def send_random_data(self) -> bytes:
+        self.should_close = False
+        self._rx_thread = threading.Thread(target=self._receive_loop, daemon=True)
+        self._rx_thread.start()
+
+    def _receive_loop(self) -> None:
+        safe_print("Starting Client Loop")
+        while not self.should_close:
+            data = self.sock.recv(RESPONSE_SIZE)
+
+            if len(data) == 12:
+                _, client_id = struct.unpack_from(CLIENT_ACCEPT_FMT, data, 0)
+                safe_print(f"Received:    allocated client id#{client_id}")
+                continue
+
+            trade = unpack_response(data)
+            safe_print(f"Received:    {trade}")
+
+    def send_random_data(self) -> None:
         order = self.order_gen.get_order()
-        print(f"Sending:     {order}")
+        safe_print(f"Sending:     {order}")
         self.sock.sendall(pack_request(order))
-        return self.sock.recv(2047)
+
+    def close(self):
+        self.should_close = True
+        self.sock.shutdown(socket.SHUT_RDWR)
+        self.sock.close()
+        self._rx_thread.join()
+
 
 if __name__ == "__main__":
     client: Client = Client()
     for _ in range(100):
-        response = client.send_random_data()
-        trades = unpack_response(response)
-        if len(trades) != 0:
-            print("Receiving:   ")
-            for trade in trades: print(f"\t{trade}")
+        client.send_random_data()
         time.sleep(SLEEP_INTERVAL)

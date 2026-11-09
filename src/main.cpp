@@ -18,7 +18,9 @@ int main(int argc, char** argv) {
     }
 
     if (strcmp(argv[1], "-server") == 0) {
-        Server server;
+        boost::asio::io_context io;
+        Server server(io);
+        io.run();
     }
 
     return 0;
