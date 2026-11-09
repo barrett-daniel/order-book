@@ -4,7 +4,7 @@
 #include <sstream>
 
 #include "cli.hpp"
-#include "server.hpp"
+#include "server/server.hpp"
 
 int main(int argc, char** argv) {
 
