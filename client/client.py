@@ -113,7 +113,7 @@ class RandomOrderGenerator:
         operation = OrderOperation.Add if len(self.order_ids) == 0 else self.rng.choices(list(OrderOperation), weights=[5,1,1])[0]
 
         side = self.rng.choice(list(Side))
-        type = self.rng.choice(list(OrderType))
+        type = self.rng.choices(list(OrderType), weights=[1,5])[0]
         tif = self.rng.choices(list(TimeInForce), weights=[1, 1, 5])[0]
 
         price = 0 if type == OrderType.Market else self.rng.randint(MIN_INT_RNG_RANGE, MAX_INT_RNG_RANGE)
