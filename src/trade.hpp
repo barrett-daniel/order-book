@@ -10,7 +10,8 @@ struct Trade {
     Price price;
 
     std::string to_string() const {
-        return std::format("[Trade : buy_id={} sell_id={}, quantity={}, price={}]",
+        return std::format(
+            "[Trade : buy_id={} sell_id={}, quantity={}, price={}]",
             buy_id,
             sell_id,
             quantity,

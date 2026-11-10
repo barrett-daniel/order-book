@@ -21,8 +21,7 @@ struct Order {
         , quantity{quantity_}
         , price{price_}
         , id{id_}
-        , tif(tif_)
-    {}
+        , tif(tif_) {}
 
     void fill(Quantity quantity_to_fill) {
         if (quantity_to_fill > quantity) {
@@ -39,7 +38,8 @@ struct Order {
 
     std::string to_string() const {
         if (type == OrderType::Market) {
-            return std::format("[Order {}: {} {} {}]",
+            return std::format(
+                "[Order {}: {} {} {}]",
                 id,
                 magic_enum::enum_name(side),
                 quantity,
@@ -48,7 +48,8 @@ struct Order {
         }
 
         // limit
-        return std::format("[Order {} : {} {} @ {} {}]",
+        return std::format(
+            "[Order {} : {} {} @ {} {}]",
             id,
             magic_enum::enum_name(side),
             quantity,

@@ -45,15 +45,17 @@ private:
     ClientId id_;
     Exchange& exchange_;
     std::array<uint8_t, PACKET_LEN> read_buff_{};
-    std::deque<std::vector<uint8_t>> write_buff_;
+    std::deque<std::vector<uint8_t> > write_buff_;
 
     void do_read() {
-        boost::asio::async_read(socket_, boost::asio::buffer(read_buff_), std::bind(
-            &Session::handle_read,
-            this->shared_from_this(),
-            boost::asio::placeholders::error,
-            boost::asio::placeholders::bytes_transferred
-        ));
+        boost::asio::async_read(socket_,boost::asio::buffer(read_buff_),
+            std::bind(
+                &Session::handle_read,
+                this->shared_from_this(),
+                boost::asio::placeholders::error,
+                boost::asio::placeholders::bytes_transferred
+            )
+        );
     }
 
     void handle_read(const boost::system::error_code& error_code, size_t len) {
@@ -68,11 +70,13 @@ private:
     }
 
     void do_write() {
-        boost::asio::async_write(socket_, boost::asio::buffer(write_buff_.front()), std::bind(
-            &Session::handle_write,
-            this->shared_from_this(),
-            boost::asio::placeholders::error
-        ));
+        boost::asio::async_write(socket_, boost::asio::buffer(write_buff_.front()),
+            std::bind(
+                &Session::handle_write,
+                this->shared_from_this(),
+                boost::asio::placeholders::error
+            )
+        );
     }
 
     void handle_write(const boost::system::error_code& error_code) {
@@ -132,12 +136,12 @@ private:
         std::memcpy(&price, data + 6, sizeof(price));
         std::memcpy(&quantity, data + 14, sizeof(quantity));
 
-        price    = boost::endian::big_to_native(price);
+        price = boost::endian::big_to_native(price);
         quantity = boost::endian::big_to_native(quantity);
         order_id = boost::endian::big_to_native(order_id);
 
         switch (*operation) {
-            case OrderOperation::Add:  return Order{*order_type, *side ,quantity, price, order_id, *tif};
+            case OrderOperation::Add: return Order{*order_type, *side, quantity, price, order_id, *tif};
             case OrderOperation::Modify: return OrderModify{order_id, price, quantity};
             case OrderOperation::Cancel: return static_cast<OrderCancel>(order_id);
             default: ParseError("Unsupported packet operation");

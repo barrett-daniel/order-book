@@ -18,10 +18,22 @@ public:
     explicit Exchange(ITradeExecutor& sink) : trade_executor_(sink) {}
 
     void handle(ClientId client, const NetworkRequest& req) {
-        if (std::holds_alternative<Order>(req))       { add(client, std::get<Order>(req)); return; }
-        if (std::holds_alternative<OrderModify>(req)) { modify(client, std::get<OrderModify>(req)); return; }
-        if (std::holds_alternative<OrderCancel>(req)) { cancel(client, std::get<OrderCancel>(req)); return; }
-        if (std::holds_alternative<ParseError>(req))  { std::cerr << "Err" << std::endl; return; }
+        if (std::holds_alternative<Order>(req)) {
+            add(client, std::get<Order>(req));
+            return;
+        }
+        if (std::holds_alternative<OrderModify>(req)) {
+            modify(client, std::get<OrderModify>(req));
+            return;
+        }
+        if (std::holds_alternative<OrderCancel>(req)) {
+            cancel(client, std::get<OrderCancel>(req));
+            return;
+        }
+        if (std::holds_alternative<ParseError>(req)) {
+            std::cerr << "Err" << std::endl;
+            return;
+        }
 
         std::cerr << "error" << std::endl;
     }
@@ -113,7 +125,7 @@ private:
             const Owner& sell_owner = sell_it->second;
             const Owner& buy_owner = buy_it->second;
 
-            NetworkTradeInfo sell_trade_info = NetworkTradeInfo {
+            NetworkTradeInfo sell_trade_info = NetworkTradeInfo{
                 .order_id = sell_owner.client_order_id,
                 .other_client_id = buy_owner.client_id,
                 .quantity = t.quantity,
@@ -121,7 +133,7 @@ private:
             };
             trade_executor_.on_trade(sell_owner.client_id, sell_trade_info);
 
-            NetworkTradeInfo buy_trade_info = NetworkTradeInfo {
+            NetworkTradeInfo buy_trade_info = NetworkTradeInfo{
                 .order_id = buy_owner.client_order_id,
                 .other_client_id = sell_owner.client_id,
                 .quantity = t.quantity,

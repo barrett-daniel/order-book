@@ -22,6 +22,7 @@ public:
         std::cout << "Server started" << std::endl;
         start_accept();
     }
+
 private:
     boost::asio::io_context& io_;
     tcp::acceptor acceptor_;
@@ -31,12 +32,14 @@ private:
 
     void start_accept() {
         auto sock = std::make_shared<tcp::socket>(acceptor_.get_executor());
-        acceptor_.async_accept(*sock, std::bind(
-            &Server::handle_accept,
-            this,
-            sock,
-            boost::asio::placeholders::error
-        ));
+        acceptor_.async_accept(*sock,
+           std::bind(
+               &Server::handle_accept,
+               this,
+               sock,
+               boost::asio::placeholders::error
+           )
+        );
     }
 
     void handle_accept(std::shared_ptr<tcp::socket> sock, const boost::system::error_code& error_code) {

@@ -30,7 +30,7 @@ public:
     }
 
 private:
-    std::unordered_map<ClientId, std::weak_ptr<Session>> sessions_;
+    std::unordered_map<ClientId, std::weak_ptr<Session> > sessions_;
 
     std::shared_ptr<Session> find(ClientId client_id) {
         auto it = sessions_.find(client_id);
@@ -42,15 +42,15 @@ private:
 
         std::memcpy(bytes.data(), MAGIC, MAGIC_LEN);
 
-        OrderId order_id         = boost::endian::native_to_big(trade_info.order_id);
+        OrderId order_id = boost::endian::native_to_big(trade_info.order_id);
         ClientId other_client_id = boost::endian::native_to_big(trade_info.other_client_id);
-        Quantity quantity        = boost::endian::native_to_big(trade_info.quantity);
-        Price price              = boost::endian::native_to_big(trade_info.price);
+        Quantity quantity = boost::endian::native_to_big(trade_info.quantity);
+        Price price = boost::endian::native_to_big(trade_info.price);
 
-        std::memcpy(bytes.data() + 4,  &order_id,        sizeof(OrderId));
+        std::memcpy(bytes.data() + 4, &order_id, sizeof(OrderId));
         std::memcpy(bytes.data() + 12, &other_client_id, sizeof(OrderId));
-        std::memcpy(bytes.data() + 20, &quantity,        sizeof(Quantity));
-        std::memcpy(bytes.data() + 28, &price,           sizeof(Price));
+        std::memcpy(bytes.data() + 20, &quantity, sizeof(Quantity));
+        std::memcpy(bytes.data() + 28, &price, sizeof(Price));
 
         return bytes;
     }

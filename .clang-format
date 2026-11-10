@@ -1,0 +1,89 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+# --- Indentation ---
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+IndentCaseLabels: true
+NamespaceIndentation: All
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+
+# --- Braces ---
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeWhile: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+
+# --- Short constructs on one line ---
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortLambdasOnASingleLine: All
+
+# --- Line breaking / wrapping ---
+ColumnLimit: 120
+BreakBeforeTernaryOperators: true
+BreakBeforeBinaryOperators: None
+AlignOperands: DontAlign
+AlignAfterOpenBracket: false
+BinPackArguments: false
+BinPackParameters: OnePerLine
+PenaltyReturnTypeOnItsOwnLine: 1000
+BreakTemplateDeclarations: Yes
+ReflowComments: Always
+
+# --- Spacing ---
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+SpaceBeforeParens: ControlStatements
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpaceInEmptyParentheses: false
+SpacesInAngles: Never
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpacesBeforeTrailingComments: 1
+Cpp11BracedListStyle: true
+BreakConstructorInitializers: BeforeComma
+PackConstructorInitializers: Never
+
+# --- Blank lines / alignment ---
+MaxEmptyLinesToKeep: 2
+KeepEmptyLinesAtTheStartOfBlocks: false
+EmptyLineBeforeAccessModifier: LogicalBlock
+SeparateDefinitionBlocks: Always
+AlignTrailingComments: true
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+
+# --- Includes ---
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<.*>'
+    Priority: 1
+  - Regex: '^".*"'
+    Priority: 2
+
+# --- Misc ---
+FixNamespaceComments: true
+InsertNewlineAtEOF: true

@@ -7,7 +7,6 @@
 #include "server/server.hpp"
 
 int main(int argc, char** argv) {
-
     if (argc != 2) {
         std::cerr << "invalid program arguments, specify either: -cli or -server" << std::endl;
     }

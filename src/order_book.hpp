@@ -56,7 +56,6 @@ public:
     }
 
     bool can_fill_order(OrderPointer order) {
-
         // could exit early if theres no spread?
 
         if (order->side == Side::Buy) {
@@ -67,7 +66,7 @@ public:
             for (auto& [price, bids] : m_asks) {
                 if (price > order->price) break;
 
-                for (OrderPointer bid : bids ) {
+                for (OrderPointer bid : bids) {
                     fillable_quantity += bid->quantity;
                 }
 
@@ -83,7 +82,7 @@ public:
             for (auto& [price, bids] : m_bids) {
                 if (price < order->price) break;
 
-                for (OrderPointer bid : bids ) {
+                for (OrderPointer bid : bids) {
                     fillable_quantity += bid->quantity;
                 }
 
@@ -151,11 +150,10 @@ public:
 
 private:
     std::unordered_map<OrderId, OrderEntry> m_orders;
-    std::map<Price, std::list<OrderPointer>, std::greater<>> m_bids;
-    std::map<Price, std::list<OrderPointer>, std::less<>> m_asks;
+    std::map<Price, std::list<OrderPointer>, std::greater<> > m_bids;
+    std::map<Price, std::list<OrderPointer>, std::less<> > m_asks;
 
     std::vector<Trade> match_orders() {
-
         std::vector<Trade> trades;
 
         // realistically this should be the number of bids, but computing this

@@ -69,7 +69,7 @@ private:
     // LIMIT:  ADD <side> <qty> @ <price> <tif>     (6 words)
     void handle_add(const std::vector<std::string>& words) {
         bool is_market = words.size() == 4;
-        bool is_limit  = words.size() == 6;
+        bool is_limit = words.size() == 6;
         if (!is_market && !is_limit) {
             print_error("ADD expects 3 arguments (MARKET) or 5 arguments (LIMIT)");
             return;
@@ -213,7 +213,7 @@ private:
 
         T value{};
         const char* start = text.data();
-        const char* end  = start + text.size();
+        const char* end = start + text.size();
         const auto result = std::from_chars(start, end, value);
 
         return result.ec == std::errc() ? std::optional<T>(value) : std::nullopt;
