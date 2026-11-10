@@ -3,6 +3,8 @@
 #include <iostream>
 #include <boost/container_hash/hash.hpp>
 #include <utility>
+#include <boost/bimap.hpp>
+#include <boost/bimap/unordered_set_of.hpp>
 
 #include "../order.hpp"
 #include "../order_book.hpp"
@@ -41,21 +43,22 @@ private:
         }
     };
 
+    using OrderBimap = boost::bimap<
+        boost::bimaps::unordered_set_of<OrderId>,
+        boost::bimaps::unordered_set_of<Owner, OwnerHash>
+    >;
+
     ITradeExecutor& trade_executor_;
     OrderFactory order_factory_;
     OrderBook order_book_;
-    std::unordered_map<OrderId, Owner>            server_order_id_to_owner_map;
-    std::unordered_map<Owner, OrderId, OwnerHash> owner_to_server_order_id_map;
+    OrderBimap order_owners_;
 
     void add(ClientId client_id, const Order& request) {
-
         Order order = (request.type == OrderType::Market) // convert client to server order
             ? order_factory_.get_market_order(request.side, request.quantity, request.tif)
             : order_factory_.get_limit_order(request.side, request.quantity, request.price, request.tif);
 
-        // store in maps
-        server_order_id_to_owner_map[order.id] = {client_id, request.id};
-        owner_to_server_order_id_map[{client_id, request.id}] = order.id;
+        order_owners_.insert(OrderBimap::value_type(order.id, Owner{client_id, request.id}));
 
         std::cout << "Adding Order: " << order.to_string() << std::endl;
         std::cout << order_book_.to_string() << std::endl;
@@ -65,8 +68,8 @@ private:
     }
 
     void modify(ClientId c, const OrderModify& request) {
-        auto it = owner_to_server_order_id_map.find({c, request.id});
-        if (it == owner_to_server_order_id_map.end()) return;
+        auto it = order_owners_.right.find(Owner{c, request.id});
+        if (it == order_owners_.right.end()) return;
 
         std::cout << "Modifying Order: " << request.to_string() << std::endl;
         std::cout << order_book_.to_string() << std::endl;
@@ -81,16 +84,15 @@ private:
     }
 
     void cancel(ClientId client_id, const OrderCancel& request) {
-        auto it = owner_to_server_order_id_map.find({client_id, static_cast<OrderId>(request)});
-        if (it == owner_to_server_order_id_map.end()) return;
+        auto it = order_owners_.right.find(Owner{client_id, static_cast<OrderId>(request)});
+        if (it == order_owners_.right.end()) return;
 
         std::cout << "Cancelling Order: " << request << std::endl;
         std::cout << order_book_.to_string() << std::endl;
 
         OrderCancel order_cancel_id = it->second;
         order_book_.cancel_order(order_cancel_id);
-        server_order_id_to_owner_map.erase(it->second);
-        owner_to_server_order_id_map.erase(it);
+        order_owners_.right.erase(it);
     }
 
     // Each trade has two sides, and they may belong to different clients
@@ -100,10 +102,10 @@ private:
         std::cout << "Trades Executed: " << std::endl;
         for (const Trade& t : trades) {
             std::cout << "\t" << t.to_string() << std::endl;
-            auto sell_it = server_order_id_to_owner_map.find(t.sell_id);
-            auto buy_it = server_order_id_to_owner_map.find(t.buy_id);
+            auto sell_it = order_owners_.left.find(t.sell_id);
+            auto buy_it = order_owners_.left.find(t.buy_id);
 
-            if (sell_it == server_order_id_to_owner_map.end() || buy_it == server_order_id_to_owner_map.end()) {
+            if (sell_it == order_owners_.left.end() || buy_it == order_owners_.left.end()) {
                 std::cerr << "Err" << std::endl;
                 continue;
             }
