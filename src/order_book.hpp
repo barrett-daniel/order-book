@@ -3,6 +3,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
+#include <sstream>
 
 #include "order.hpp"
 #include "trade.hpp"
@@ -18,6 +19,9 @@ struct OrderEntry {
 class OrderBook {
 public:
     std::vector<Trade> add_order(OrderPointer order) {
+        if (order->quantity == 0) return {};
+        if (get_order(order->id) != nullptr) return {};
+
         // market orders can be collapsed to be limit orders at the current
         // worst price on the other side.
         if (order->type == OrderType::Market) {
@@ -48,7 +52,7 @@ public:
         auto it = std::prev(price_level.end());
         m_orders.emplace(order->id, OrderEntry{order, it});
 
-        auto trades = match_orders();
+        auto trades = match_orders(order);
         if (order->tif == TimeInForce::IOC && m_orders.contains(order->id)) {
             cancel_order(order->id);
         }
@@ -148,18 +152,38 @@ public:
         return order;
     }
 
+    std::vector<OrderPointer> get_orders() {
+        std::vector<OrderPointer> orders;
+        orders.reserve(m_asks.size() + m_bids.size());
+
+        for (const auto& [_, bids] : m_bids) {
+            for (OrderPointer bid : bids) {
+                orders.push_back(bid);
+            }
+        }
+
+        for (const auto& [_, asks] : m_asks) {
+            for (OrderPointer ask : asks) {
+                orders.push_back(ask);
+            }
+        }
+
+        return orders;
+    }
+
 private:
     std::unordered_map<OrderId, OrderEntry> m_orders;
     std::map<Price, std::list<OrderPointer>, std::greater<> > m_bids;
     std::map<Price, std::list<OrderPointer>, std::less<> > m_asks;
 
-    std::vector<Trade> match_orders() {
+    std::vector<Trade> match_orders(const OrderPointer& aggressor) {
         std::vector<Trade> trades;
 
         // realistically this should be the number of bids, but computing this
         // efficiently based on the current data structures may be too much work
         // compared to just reserving for the total number of orders.
         trades.reserve(m_orders.size());
+        bool aggressor_is_buy = aggressor->side == Side::Buy;
 
         while (!m_bids.empty() && !m_asks.empty()) {
             auto& [bid_price, bids] = *m_bids.begin();
@@ -174,6 +198,9 @@ private:
                 // get the first FIFO bid/ask at the level
                 OrderPointer bid = bids.front();
                 OrderPointer ask = asks.front();
+
+                // trades execute at the resting order's price
+                Price trade_price = aggressor_is_buy ? ask_price : bid->price;
 
                 // get the minimum quantity of the two and fill the orders with
                 // those quantities
@@ -191,7 +218,7 @@ private:
                     m_orders.erase(ask->id);
                 }
 
-                trades.emplace_back(bid->id, ask->id, quantity, ask->price);
+                trades.emplace_back(bid->id, ask->id, quantity, trade_price);
             }
 
             // remove price levels is empty
