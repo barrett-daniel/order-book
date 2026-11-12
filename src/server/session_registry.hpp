@@ -10,7 +10,6 @@
 #include "constants.hpp"
 #include "exchange.hpp"
 #include "session.hpp"
-#include "session_registry.hpp"
 #include "server_types.hpp"
 
 class SessionRegistry : public ITradeExecutor {
@@ -48,7 +47,7 @@ private:
         Price price = boost::endian::native_to_big(trade_info.price);
 
         std::memcpy(bytes.data() + 4, &order_id, sizeof(OrderId));
-        std::memcpy(bytes.data() + 12, &other_client_id, sizeof(OrderId));
+        std::memcpy(bytes.data() + 12, &other_client_id, sizeof(ClientId));
         std::memcpy(bytes.data() + 20, &quantity, sizeof(Quantity));
         std::memcpy(bytes.data() + 28, &price, sizeof(Price));
 

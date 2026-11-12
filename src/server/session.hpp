@@ -10,7 +10,6 @@
 
 #include "constants.hpp"
 #include "exchange.hpp"
-#include "session.hpp"
 #include "server_types.hpp"
 
 using boost::asio::ip::tcp;
