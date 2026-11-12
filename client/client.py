@@ -54,6 +54,15 @@ class OrderOperation(IntEnum):
 # =====================================
 
 @dataclass
+class Order:
+    type: OrderType
+    side: Side
+    quantity: int
+    price: int
+    id: int
+    tif: TimeInForce
+
+@dataclass
 class OrderRequest:
     curr_max_order_id: ClassVar[int] = 0
     operation: OrderOperation = OrderOperation.Add
@@ -66,8 +75,8 @@ class OrderRequest:
 
     def __str__(self) -> str:
         match self.operation:
-            case OrderOperation.Cancel: return f"OrderRequest : {self.operation.name:<8} {self.order_id:<8}"
-            case OrderOperation.Modify: return f"OrderRequest : {self.operation.name:<8} {self.order_id:<8} {self.quantity:<8} @ {self.price:<8}"
+            case OrderOperation.Cancel: return f"OrderRequest : {self.operation.name:<8} #{self.order_id:<8}"
+            case OrderOperation.Modify: return f"OrderRequest : {self.operation.name:<8} #{self.order_id:<8} {self.quantity:<8} @ {self.price:<8}"
             case OrderOperation.Add:    return f"OrderRequest : {self.operation.name:<8} #{self.order_id:<8}: {self.side.name:<4} {self.quantity:<8} {self.type.name:<8} @ {self.price:<8} {self.tif.name:<8}"
 
 @dataclass
@@ -78,7 +87,7 @@ class Trade:
     price: int = 0
 
     def __str__(self) -> str:
-        return f"Trade : id#{self.order_id:<8} other_client_id#{self.other_client_id:<8} {self.quantity:<8} @ {self.price:<8}"
+        return f"Trade        : id#{self.order_id:<8} other_client_id#{self.other_client_id:<8} {self.quantity:<8} @ {self.price:<8}"
 
 
 # Network Packing
@@ -107,10 +116,9 @@ def safe_print(msg: str) -> None:
 class RandomOrderGenerator:
     def __init__(self):
         self.rng = random.Random()
-        self.order_ids = []
 
-    def get_order(self) -> OrderRequest:
-        operation = OrderOperation.Add if len(self.order_ids) == 0 else self.rng.choices(list(OrderOperation), weights=[5,1,1])[0]
+    def get_order_request(self, current_orders: list[Order]) -> OrderRequest:
+        operation = OrderOperation.Add if len(current_orders) == 0 else self.rng.choices(list(OrderOperation), weights=[5,1,1])[0]
 
         side = self.rng.choice(list(Side))
         type = self.rng.choices(list(OrderType), weights=[1,5])[0]
@@ -120,20 +128,33 @@ class RandomOrderGenerator:
         quantity = self.rng.randint(MIN_INT_RNG_RANGE, MAX_INT_RNG_RANGE)
 
         order_id = 0
+        random_order: Order | None = None
         if operation == OrderOperation.Add:
             order_id = OrderRequest.curr_max_order_id
             OrderRequest.curr_max_order_id += 1
-            self.order_ids.append(order_id)
         else:
-            order_id = self.rng.choice(self.order_ids)
+            random_order = self.rng.choice(current_orders)
+            assert random_order is not None
+            order_id = random_order.id
 
         match operation:
-            case OrderOperation.Cancel: return OrderRequest(operation=OrderOperation.Cancel, order_id=order_id)
-            case OrderOperation.Modify: return OrderRequest(operation=OrderOperation.Modify, order_id=order_id, price=price, quantity=quantity)
-            case OrderOperation.Add:    return OrderRequest(operation=OrderOperation.Add,    order_id=order_id, price=price, quantity=quantity, side=side, type=type, tif=tif)
+            case OrderOperation.Cancel:
+                assert random_order is not None
+                current_orders.remove(random_order)
+                return OrderRequest(operation=OrderOperation.Cancel, order_id=order_id)
 
-    def add_order_id(self, order_id: int):
-        self.order_ids.append(order_id)
+            case OrderOperation.Modify:
+                assert random_order is not None
+                order_idx = current_orders.index(random_order)
+                current_orders[order_idx].price = price
+                current_orders[order_idx].quantity = quantity
+                if current_orders[order_idx].quantity == 0: current_orders.remove(random_order)
+                return OrderRequest(operation=OrderOperation.Modify, order_id=order_id, price=price, quantity=quantity)
+
+            case OrderOperation.Add:
+                if tif == TimeInForce.GTC and type == OrderType.Limit:
+                    current_orders.append(Order(type=type, side=side, id=order_id, price=price, quantity=quantity, tif=tif))
+                return OrderRequest(operation=OrderOperation.Add,    order_id=order_id, price=price, quantity=quantity, side=side, type=type, tif=tif)
 
 CLIENT_ACCEPT_FMT = "!4sQ"  # client_id
 
@@ -146,6 +167,7 @@ class Client:
         self.should_close = False
         self._rx_thread = threading.Thread(target=self._receive_loop, daemon=True)
         self._rx_thread.start()
+        self.orders: list[Order] = []
 
     def _receive_loop(self) -> None:
         safe_print("Starting Client Loop")
@@ -158,12 +180,19 @@ class Client:
                 continue
 
             trade = unpack_response(data)
+            self.process_trade(trade)
             safe_print(f"Received:    {trade}")
 
     def send_random_data(self) -> None:
-        order = self.order_gen.get_order()
-        safe_print(f"Sending:     {order}")
-        self.sock.sendall(pack_request(order))
+        order_request = self.order_gen.get_order_request(self.orders)
+        safe_print(f"Sending:     {order_request}")
+        self.sock.sendall(pack_request(order_request))
+
+    def process_trade(self, trade: Trade):
+        for order in list(self.orders): # copy as its mutated whilst iterating
+            if order.id == trade.order_id:
+                order.quantity -= trade.quantity
+                if order.quantity <= 0: self.orders.remove(order)
 
     def close(self):
         self.should_close = True

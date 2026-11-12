@@ -142,7 +142,7 @@ public:
     }
 
     OrderPointer get_order(OrderId order_id) {
-        if (!m_orders.contains(order_id)) return {};
+        if (!m_orders.contains(order_id)) return nullptr;
 
         auto& [order, _] = m_orders.at(order_id);
         return order;
@@ -218,7 +218,10 @@ private:
 
     void modify_order_quantity(OrderId order_id, Quantity new_quantity) {
         if (!m_orders.contains(order_id)) return;
-        if (new_quantity == 0) cancel_order(order_id);
+        if (new_quantity == 0) {
+            cancel_order(order_id);
+            return;
+        }
 
         auto& [order, it] = m_orders.at(order_id);
         if (new_quantity == order->quantity) return;

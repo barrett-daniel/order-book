@@ -72,39 +72,42 @@ private:
 
         order_owners_.insert(OrderBimap::value_type(order.id, Owner{client_id, request.id}));
 
-        std::cout << "Adding Order: " << order.to_string() << std::endl;
-        std::cout << order_book_.to_string() << std::endl;
-
         auto trades = order_book_.add_order(std::make_shared<Order>(order));
         publish(trades);
+        prune_owners(order.id, trades);
+
+        std::cout << "Adding Order: " << order.to_string() << std::endl;
+        std::cout << order_book_.to_string() << std::endl;
     }
 
     void modify(ClientId c, const OrderModify& request) {
         auto it = order_owners_.right.find(Owner{c, request.id});
         if (it == order_owners_.right.end()) return;
 
-        std::cout << "Modifying Order: " << request.to_string() << std::endl;
-        std::cout << order_book_.to_string() << std::endl;
-
         OrderModify order_modify = {
             .id = it->second,
             .price = request.price,
             .quantity = request.quantity,
         };
+
         auto trades = order_book_.modify_order(order_modify);
         publish(trades);
+        prune_owners(order_modify.id, trades);
+
+        std::cout << "Modifying Order: " << order_modify.to_string() << std::endl;
+        std::cout << order_book_.to_string() << std::endl;
     }
 
     void cancel(ClientId client_id, const OrderCancel& request) {
         auto it = order_owners_.right.find(Owner{client_id, static_cast<OrderId>(request)});
         if (it == order_owners_.right.end()) return;
 
-        std::cout << "Cancelling Order: " << request << std::endl;
-        std::cout << order_book_.to_string() << std::endl;
-
         OrderCancel order_cancel_id = it->second;
         order_book_.cancel_order(order_cancel_id);
         order_owners_.right.erase(it);
+
+        std::cout << "Cancelling Order: " << order_cancel_id << std::endl;
+        std::cout << order_book_.to_string() << std::endl;
     }
 
     // Each trade has two sides, and they may belong to different clients
@@ -143,5 +146,19 @@ private:
             trade_executor_.on_trade(buy_owner.client_id, buy_trade_info);
         }
         std::cout << std::endl;
+    }
+
+    void prune_owners(OrderId order_id, const std::vector<Trade>& trades) {
+        auto prune = [this](OrderId id) -> void {
+            if (this->order_book_.get_order(id) == nullptr) {
+                order_owners_.left.erase(id);
+            }
+        };
+
+        prune(order_id);
+        for (const Trade& trade : trades) {
+            prune(trade.buy_id);
+            prune(trade.sell_id);
+        }
     }
 };
