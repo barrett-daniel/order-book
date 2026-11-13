@@ -75,25 +75,30 @@ private:
             return;
         }
 
-        auto add_order = [this](const Order& order) {
+        auto add_order = [this](const Order& order) -> void {
             const std::vector<Trade> trades = order_book.add_order(std::make_shared<Order>(order));
             std::cout << "Added Order: " << order.to_string() << "\n\n";
             print_result(trades);
         };
 
+        // parse 'side' input
         const auto side = parse_enum<Side>(words[1]);
         if (!side) {
             print_error("ADD with unknown side");
             return;
         }
 
+        // parse 'quantity' input
         const auto quantity = parse_number<Quantity>(words[2]);
         if (!quantity) {
             print_error("ADD with invalid quantity");
             return;
         }
 
+        // handle market orders
         if (is_market) {
+
+            // process 'tif' input
             const auto tif = parse_enum<TimeInForce>(words[3]);
             if (!tif) {
                 print_error("ADD with unknown time-in-force");
@@ -106,17 +111,20 @@ private:
 
         // otherwise limit orders
 
+        // limit orders should have a price/quantity @ deliminator
         if (words[3] != "@") {
             print_error("LIMIT order is missing the '@' symbol");
             return;
         }
 
+        // parse the 'price' input
         const auto price = parse_number<Price>(words[4]);
         if (!price) {
             print_error("ADD with invalid price");
             return;
         }
 
+        // parse the 'tif' input
         const auto tif = parse_enum<TimeInForce>(words[5]);
         if (!tif) {
             print_error("ADD with unknown time-in-force");
@@ -133,12 +141,14 @@ private:
             return;
         }
 
+        // parse the 'order id' input
         const auto order_id = parse_number<OrderId>(words[1]);
         if (!order_id) {
             print_error("MODIFY with invalid order id");
             return;
         }
 
+        // parse the modification 'field' input
         const auto field = parse_enum<ModifyField>(words[2]);
         if (!field) {
             print_error("MODIFY field must be PRICE or QUANTITY");
@@ -180,6 +190,7 @@ private:
             return;
         }
 
+        // parse the 'order id' input
         const auto order_id = parse_number<OrderId>(words[1]);
         if (!order_id) {
             print_error("CANCEL with invalid order id");
@@ -207,6 +218,13 @@ private:
         std::cerr << "invalid input: " << message << std::endl;
     }
 
+    /**
+     * Parses a given input string into the templated integral type
+     *
+     * @tparam T type to parse to
+     * @param text to parse
+     * @return the integral value
+     */
     template <typename T>
     static std::optional<T> parse_number(std::string_view text) {
         if (text.empty() || text.front() == '-') return std::nullopt;

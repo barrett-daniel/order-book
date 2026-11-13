@@ -50,6 +50,6 @@ private:
             session->start();
             std::cout << "New Client Connected" << std::endl;
         }
-        start_accept();
+        start_accept(); // recursively accept clients
     }
 };

@@ -19,20 +19,21 @@ struct OrderEntry {
 class OrderBook {
 public:
     std::vector<Trade> add_order(OrderPointer order) {
+        // sanity checks
         if (order->quantity == 0) return {};
         if (get_order(order->id) != nullptr) return {};
 
         // market orders can be collapsed to be limit orders at the current
         // worst price on the other side.
         if (order->type == OrderType::Market) {
-            if (order->side == Side::Buy && !m_asks.empty()) {
-                const auto& [worst_ask, _] = *m_asks.rbegin();
+            if (order->side == Side::Buy && !asks_.empty()) {
+                const auto& [worst_ask, _] = *asks_.rbegin();
                 order->price = worst_ask;
                 order->type = OrderType::Limit;
                 if (order->tif != TimeInForce::FOK) order->tif = TimeInForce::IOC;
             }
-            else if (order->side == Side::Sell && !m_bids.empty()) {
-                const auto& [worst_bid, _] = *m_bids.rbegin();
+            else if (order->side == Side::Sell && !bids_.empty()) {
+                const auto& [worst_bid, _] = *bids_.rbegin();
                 order->price = worst_bid;
                 order->type = OrderType::Limit;
                 if (order->tif != TimeInForce::FOK) order->tif = TimeInForce::IOC;
@@ -40,81 +41,45 @@ public:
             else return {};
         }
 
+        // if the FOK order cannot be executed -> do nothing
         if (order->tif == TimeInForce::FOK && !can_fill_order(order)) {
             return {};
         }
 
+        // insert the order into the book
         auto& price_level = order->side == Side::Buy
-            ? m_bids[order->price]
-            : m_asks[order->price];
+            ? bids_[order->price]
+            : asks_[order->price];
 
         price_level.push_back(order);
         auto it = std::prev(price_level.end());
-        m_orders.emplace(order->id, OrderEntry{order, it});
+        orders_.emplace(order->id, OrderEntry{order, it});
 
+        // try and match the newly added order and process it accordingly
         auto trades = match_orders(order);
-        if (order->tif == TimeInForce::IOC && m_orders.contains(order->id)) {
+        if (order->tif == TimeInForce::IOC && orders_.contains(order->id)) {
             cancel_order(order->id);
         }
         return trades;
     }
 
-    bool can_fill_order(OrderPointer order) {
-        // could exit early if theres no spread?
-
-        if (order->side == Side::Buy) {
-            Quantity fillable_quantity = 0;
-
-            // can probably abstract this logic to maintain another map of:
-            // price -> quantity for each level
-            for (auto& [price, bids] : m_asks) {
-                if (price > order->price) break;
-
-                for (OrderPointer bid : bids) {
-                    fillable_quantity += bid->quantity;
-                }
-
-                if (fillable_quantity >= order->quantity) return true;
-            }
-
-            return false;
-        }
-
-        // same pattern as above but inverted
-        if (order->side == Side::Sell) {
-            Quantity fillable_quantity = 0;
-            for (auto& [price, bids] : m_bids) {
-                if (price < order->price) break;
-
-                for (OrderPointer bid : bids) {
-                    fillable_quantity += bid->quantity;
-                }
-
-                if (fillable_quantity >= order->quantity) return true;
-            }
-
-            return false;
-        }
-
-        return false;
-    }
-
     void cancel_order(OrderCancel order_cancel) {
-        if (!m_orders.contains(order_cancel)) return;
+        if (!orders_.contains(order_cancel)) return;
 
-        auto& [order, it] = m_orders.at(order_cancel);
+        auto& [order, it] = orders_.at(order_cancel);
 
+        // remove the given order from its associated price level
         if (order->side == Side::Buy) {
-            auto& price_level = m_bids.at(order->price);
+            auto& price_level = bids_.at(order->price);
             price_level.erase(it);
-            if (price_level.empty()) m_bids.erase(order->price);
+            if (price_level.empty()) bids_.erase(order->price);
         }
         else {
-            auto& price_level = m_asks.at(order->price);
+            auto& price_level = asks_.at(order->price);
             price_level.erase(it);
-            if (price_level.empty()) m_asks.erase(order->price);
+            if (price_level.empty()) asks_.erase(order->price);
         }
-        m_orders.erase(order_cancel);
+        orders_.erase(order_cancel);
     }
 
     std::vector<Trade> modify_order(const OrderModify& order_modify) {
@@ -124,18 +89,17 @@ public:
 
     std::string to_string() const {
         std::stringstream ss;
-
         ss << "===== ORDER BOOK =====\n";
 
         ss << "=====    BIDS    =====\n";
-        for (const auto& [price_level, bids] : m_bids) {
+        for (const auto& [price_level, bids] : bids_) {
             for (OrderPointer bid : bids) {
                 ss << bid->to_string() << "\n";
             }
         }
 
         ss << "=====    ASKS    =====\n";
-        for (const auto& [price_level, asks] : m_asks) {
+        for (const auto& [price_level, asks] : asks_) {
             for (OrderPointer ask : asks) {
                 ss << ask->to_string() << "\n";
             }
@@ -146,23 +110,23 @@ public:
     }
 
     OrderPointer get_order(OrderId order_id) {
-        if (!m_orders.contains(order_id)) return nullptr;
+        if (!orders_.contains(order_id)) return nullptr;
 
-        auto& [order, _] = m_orders.at(order_id);
+        auto& [order, _] = orders_.at(order_id);
         return order;
     }
 
     std::vector<OrderPointer> get_orders() {
         std::vector<OrderPointer> orders;
-        orders.reserve(m_asks.size() + m_bids.size());
+        orders.reserve(asks_.size() + bids_.size());
 
-        for (const auto& [_, bids] : m_bids) {
+        for (const auto& [_, bids] : bids_) {
             for (OrderPointer bid : bids) {
                 orders.push_back(bid);
             }
         }
 
-        for (const auto& [_, asks] : m_asks) {
+        for (const auto& [_, asks] : asks_) {
             for (OrderPointer ask : asks) {
                 orders.push_back(ask);
             }
@@ -172,9 +136,9 @@ public:
     }
 
 private:
-    std::unordered_map<OrderId, OrderEntry> m_orders;
-    std::map<Price, std::list<OrderPointer>, std::greater<> > m_bids;
-    std::map<Price, std::list<OrderPointer>, std::less<> > m_asks;
+    std::unordered_map<OrderId, OrderEntry> orders_;
+    std::map<Price, std::list<OrderPointer>, std::greater<> > bids_;
+    std::map<Price, std::list<OrderPointer>, std::less<> > asks_;
 
     std::vector<Trade> match_orders(const OrderPointer& aggressor) {
         std::vector<Trade> trades;
@@ -182,12 +146,12 @@ private:
         // realistically this should be the number of bids, but computing this
         // efficiently based on the current data structures may be too much work
         // compared to just reserving for the total number of orders.
-        trades.reserve(m_orders.size());
+        trades.reserve(orders_.size());
         bool aggressor_is_buy = aggressor->side == Side::Buy;
 
-        while (!m_bids.empty() && !m_asks.empty()) {
-            auto& [bid_price, bids] = *m_bids.begin();
-            auto& [ask_price, asks] = *m_asks.begin();
+        while (!bids_.empty() && !asks_.empty()) {
+            auto& [bid_price, bids] = *bids_.begin();
+            auto& [ask_price, asks] = *asks_.begin();
 
             // if the spread is positive, we can't match any trades
             if (ask_price - bid_price > 0) break;
@@ -211,28 +175,28 @@ private:
                 // if either of the orders are now filled -> remove them
                 if (bid->quantity == 0) {
                     bids.pop_front();
-                    m_orders.erase(bid->id);
+                    orders_.erase(bid->id);
                 }
                 if (ask->quantity == 0) {
                     asks.pop_front();
-                    m_orders.erase(ask->id);
+                    orders_.erase(ask->id);
                 }
 
                 trades.emplace_back(bid->id, ask->id, quantity, trade_price);
             }
 
             // remove price levels is empty
-            if (bids.empty()) m_bids.erase(bid_price);
-            if (asks.empty()) m_asks.erase(ask_price);
+            if (bids.empty()) bids_.erase(bid_price);
+            if (asks.empty()) asks_.erase(ask_price);
         }
 
         return trades;
     }
 
     std::vector<Trade> modify_order_price(OrderId order_id, Price new_price) {
-        if (!m_orders.contains(order_id)) return {};
+        if (!orders_.contains(order_id)) return {};
 
-        auto [order, _] = m_orders.at(order_id);
+        auto [order, _] = orders_.at(order_id);
         if (new_price == order->price) return {};
 
         // modifying an orders price is just cancelling the order and re-adding
@@ -244,13 +208,13 @@ private:
     }
 
     void modify_order_quantity(OrderId order_id, Quantity new_quantity) {
-        if (!m_orders.contains(order_id)) return;
+        if (!orders_.contains(order_id)) return;
         if (new_quantity == 0) {
             cancel_order(order_id);
             return;
         }
 
-        auto& [order, it] = m_orders.at(order_id);
+        auto& [order, it] = orders_.at(order_id);
         if (new_quantity == order->quantity) return;
 
         // if the order modification is a reduction in quantity, it should
@@ -259,10 +223,50 @@ private:
         if (new_quantity > order->quantity) {
             // move to back of price level
             auto& price_level = order->side == Side::Buy
-                ? m_bids[order->price]
-                : m_asks[order->price];
+                ? bids_[order->price]
+                : asks_[order->price];
             price_level.splice(price_level.end(), price_level, it);
         }
         order->quantity = new_quantity;
+    }
+
+    bool can_fill_order(OrderPointer order) {
+        // could exit early if theres no spread?
+
+        if (order->side == Side::Buy) {
+            Quantity fillable_quantity = 0;
+
+            // can probably abstract this logic to maintain another map of:
+            // price -> quantity for each level
+            for (auto& [price, bids] : asks_) {
+                if (price > order->price) break;
+
+                for (OrderPointer bid : bids) {
+                    fillable_quantity += bid->quantity;
+                }
+
+                if (fillable_quantity >= order->quantity) return true;
+            }
+
+            return false;
+        }
+
+        // same pattern as above but inverted
+        if (order->side == Side::Sell) {
+            Quantity fillable_quantity = 0;
+            for (auto& [price, bids] : bids_) {
+                if (price < order->price) break;
+
+                for (OrderPointer bid : bids) {
+                    fillable_quantity += bid->quantity;
+                }
+
+                if (fillable_quantity >= order->quantity) return true;
+            }
+
+            return false;
+        }
+
+        return false;
     }
 };

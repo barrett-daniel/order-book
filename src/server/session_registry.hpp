@@ -12,7 +12,10 @@
 #include "session.hpp"
 #include "server_types.hpp"
 
-class SessionRegistry : public ITradeExecutor {
+/**
+ * Data structure managing the pool of currently active sessions
+ */
+class SessionRegistry : public ITradeNotifier {
 public:
     void add(ClientId client_id, std::weak_ptr<Session> s) {
         sessions_[client_id] = std::move(s);
@@ -36,6 +39,12 @@ private:
         return it == sessions_.end() ? nullptr : it->second.lock();
     }
 
+    /**
+     * Encode the network trade data into bytes
+     *
+     * @param trade_info to parse into bytes
+     * @return the encoded bytes
+     */
     static std::vector<uint8_t> encode(const NetworkTradeInfo& trade_info) {
         std::vector<uint8_t> bytes(RESPONSE_SIZE);
 

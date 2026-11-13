@@ -22,18 +22,19 @@ public:
         , exchange_(ex) {}
 
     void start() {
+        // send the client their client id
         std::vector<uint8_t> client_accept_msg(MAGIC_LEN + sizeof(ClientId));
-
         ClientId id = boost::endian::native_to_big(id_);
-
         std::memcpy(client_accept_msg.data(), &MAGIC, MAGIC_LEN);
         std::memcpy(client_accept_msg.data() + MAGIC_LEN, &id, sizeof(ClientId));
         deliver(client_accept_msg);
 
+        // start receiver loop
         do_read();
     }
 
     void deliver(std::vector<uint8_t> msg) {
+        // push the message to a buffer, and if idle -> deliver the message
         bool idle = write_buff_.empty();
         write_buff_.push_back(std::move(msg));
         if (idle) do_write();
@@ -63,9 +64,10 @@ private:
             return;
         }
 
+        // parse the read data and pass it to the exchange to handle it
         NetworkRequest request = parse_packet(read_buff_.data());
         exchange_.handle(id_, request);
-        do_read();
+        do_read(); // continue loop
     }
 
     void do_write() {
@@ -99,6 +101,12 @@ private:
         }
     }
 
+    /**
+     * Converts some network byte data into an encoded request for the exchange to handle
+     *
+     * @param data bytes of network request data
+     * @return the encoded request
+     */
     static NetworkRequest parse_packet(uint8_t* data) {
         if (std::memcmp(data, MAGIC, MAGIC_LEN) != 0) return ParseError("Invalid packet MAGIC");
 
@@ -110,6 +118,8 @@ private:
         Price price = 0;
         Quantity quantity = 0;
         OrderId order_id = 0;
+
+        // below: extract the bits associated with each element of the order request and store in variables
 
         std::memcpy(&operation_bits, data + 4, sizeof(operation_bits));
         operation_bits &= 0b00001111;
@@ -135,10 +145,12 @@ private:
         std::memcpy(&price, data + 6, sizeof(price));
         std::memcpy(&quantity, data + 14, sizeof(quantity));
 
+        // ntoh calls
         price = boost::endian::big_to_native(price);
         quantity = boost::endian::big_to_native(quantity);
         order_id = boost::endian::big_to_native(order_id);
 
+        // switch over the operation type and store in the associated variant type
         switch (*operation) {
             case OrderOperation::Add: return Order{*order_type, *side, quantity, price, order_id, *tif};
             case OrderOperation::Modify: return OrderModify{order_id, price, quantity};

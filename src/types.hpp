@@ -27,6 +27,13 @@ enum class OrderOperation : int {
     Cancel = 2
 };
 
+/**
+ * Converts an input value to the templated enum type
+ *
+ * @tparam E The enum to cast to
+ * @param value The value of the data to be cast
+ * @return The associated enum value of the input
+ */
 template <typename E, typename T>
 inline std::optional<E> parse_enum(T value) {
     if constexpr (std::is_integral_v<T>) {
