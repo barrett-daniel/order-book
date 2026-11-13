@@ -57,5 +57,9 @@ target_include_directories(${PROJECT_NAME}_TEST PRIVATE ${CMAKE_CURRENT_SOURCE_D
 find_package(doctest CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME}_TEST PRIVATE doctest::doctest)
 
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME}_TEST PRIVATE ws2_32 mswsock)
+endif()
+
 include(doctest)
 doctest_discover_tests(${PROJECT_NAME}_TEST)

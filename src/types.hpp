@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <magic_enum/magic_enum.hpp>
 
 using Price = int64_t;
 using Quantity = uint64_t;

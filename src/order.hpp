@@ -1,6 +1,7 @@
 #pragma once
 #include <format>
 #include <stdexcept>
+#include <memory>
 #include <magic_enum/magic_enum.hpp>
 
 #include "types.hpp"
