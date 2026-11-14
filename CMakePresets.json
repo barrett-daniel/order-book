@@ -7,7 +7,7 @@
       "hidden": true,
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "./vcpkg/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
       }
     },
 
@@ -38,6 +38,25 @@
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Darwin"
+      }
+    },
+
+    {
+      "name": "windows-x64",
+      "inherits": "base",
+      "hidden": true,
+      "generator": "Visual Studio 18 2026",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     },
 
@@ -161,6 +180,28 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_FLAGS_RELEASE": "-O3 -g -DNDEBUG"
+      }
+    },
+
+    {
+      "name": "windows-x64-debug",
+      "displayName": "Windows x64 Debug",
+      "inherits": "windows-x64"
+    },
+
+    {
+      "name": "windows-x64-release",
+      "displayName": "Windows x64 Release",
+      "inherits": "windows-x64"
+    },
+
+    {
+      "name": "windows-x64-profile",
+      "displayName": "Windows x64 Profile",
+      "inherits": "windows-x64",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS_RELEASE": "/O2 /Zi /DNDEBUG",
+        "CMAKE_EXE_LINKER_FLAGS_RELEASE": "/DEBUG"
       }
     },
 
