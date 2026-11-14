@@ -7,7 +7,7 @@ PORT: int = 8080
 
 # configuration constants
 # =====================================
-SLEEP_INTERVAL: float = 1.5
+SLEEP_INTERVAL: float = 0.3
 MIN_INT_RNG_RANGE: int = 75
 MAX_INT_RNG_RANGE: int = 125
 
